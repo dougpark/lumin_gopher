@@ -4,6 +4,49 @@
  */
 
 import Bun from "bun";
+import { watch } from "node:fs"; // Bun supports the standard FS watch API
+import path from "node:path";
+
+/**
+ * LUMIN GOPHER - Folder Watcher Feature
+ */
+
+// This points to the directory where index.ts lives (e.g., /app/src)
+const PROJECT_ROOT = path.join(import.meta.dir, "..");
+const WATCH_PATH = path.join(PROJECT_ROOT, "watch_folder"); // <-- This is the folder Gopher will monitor
+
+console.log(`[System] Gopher is watching: ${WATCH_PATH}`);
+
+// Ensure the directory exists so the watcher doesn't crash on startup
+import { mkdirSync, existsSync } from "node:fs";
+if (!existsSync(WATCH_PATH)) {
+    mkdirSync(WATCH_PATH);
+    console.log(`[System] Created watcher directory: ${WATCH_PATH}`);
+}
+
+/**
+ * THE WATCHER
+ * This uses the kernel's inotify (on Linux) to listen for changes.
+ */
+watch(WATCH_PATH, { recursive: true }, (event, filename) => {
+    if (filename) {
+        const timestamp = new Date().toLocaleTimeString();
+
+        // 'rename' usually covers both new files and deletions
+        // 'change' covers edits to existing files
+        console.log(`[${timestamp}] 📂 File System Event: ${event.toUpperCase()}`);
+        console.log(`[${timestamp}] 📄 File: ${WATCH_PATH}/${filename}`);
+
+        if (event === "rename") {
+            console.log(`[${timestamp}] ⚡ Gopher Alert: A new artifact has been discovered or moved!`);
+            // Future: Trigger Gemma 3 tagging here
+        }
+    }
+});
+
+console.log(`[System] Gopher is now eyes-on: ${WATCH_PATH}`);
+
+
 
 // 1. Start the Management UI (The "Web Server")
 const server = Bun.serve({
