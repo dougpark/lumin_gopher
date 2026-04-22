@@ -7,4 +7,6 @@ services:
     volumes:
       - .:/app  # This is the magic "Bind Mount"
     working_dir: /app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: bun run --watch src/index.ts # Bun's built-in watcher!

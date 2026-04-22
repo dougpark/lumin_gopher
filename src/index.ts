@@ -14,6 +14,7 @@ import path from "node:path";
 // This points to the directory where index.ts lives (e.g., /app/src)
 const PROJECT_ROOT = path.join(import.meta.dir, "..");
 const WATCH_PATH = path.join(PROJECT_ROOT, "watch_folder"); // <-- This is the folder Gopher will monitor
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "gemma4:e4b"; // Default to a specific model if not set in .env
 
 console.log(`[System] Gopher is watching: ${WATCH_PATH}`);
 
@@ -22,6 +23,40 @@ import { mkdirSync, existsSync } from "node:fs";
 if (!existsSync(WATCH_PATH)) {
     mkdirSync(WATCH_PATH);
     console.log(`[System] Created watcher directory: ${WATCH_PATH}`);
+}
+
+/**
+ * OLLAMA TAGGING
+ * Calls local Ollama to generate 5 tags and a 2-sentence summary for a discovered file.
+ */
+async function tagFileWithOllama(filename: string): Promise<void> {
+    const prompt = `You are a file archivist. Given the filename "${filename}", generate exactly 5 relevant tags and a 2-sentence summary describing what this file likely contains or represents. Respond ONLY with valid JSON using this exact structure: {"tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], "summary": "First sentence. Second sentence."}`;
+
+    try {
+        const response = await fetch("http://host.docker.internal:11434/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                model: OLLAMA_MODEL,
+                prompt,
+                stream: false,
+                format: "json"
+            })
+        });
+
+        if (!response.ok) {
+            console.error(`[Ollama] HTTP ${response.status} - ${await response.text()}`);
+            return;
+        }
+
+        const data = await response.json() as { response: string };
+        const result = JSON.parse(data.response) as { tags: string[]; summary: string };
+
+        console.log(`[Ollama] Tags:    ${result.tags.join(", ")}`);
+        console.log(`[Ollama] Summary: ${result.summary}`);
+    } catch (err) {
+        console.error(`[Ollama] Failed to tag "${filename}": ${err}`);
+    }
 }
 
 /**
@@ -39,7 +74,7 @@ watch(WATCH_PATH, { recursive: true }, (event, filename) => {
 
         if (event === "rename") {
             console.log(`[${timestamp}] ⚡ Gopher Alert: A new artifact has been discovered or moved!`);
-            // Future: Trigger Gemma 3 tagging here
+            tagFileWithOllama(filename);
         }
     }
 });
