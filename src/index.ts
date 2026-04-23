@@ -6,9 +6,9 @@
 import Bun from "bun";
 import { watch } from "node:fs"; // Bun supports the standard FS watch API
 import path from "node:path";
-import { enrichRssQueue } from "./enrichment";
-import { tagFileWithOllama } from "./tagger";
-import { logEvent, querySummary, queryTimeseries, queryRecentErrors } from "./db";
+import { enrichRssQueue } from "./workers/enrichment";
+import { tagFileWithOllama } from "./workers/tagger";
+import { logEvent, querySummary, queryTimeseries, queryRecentErrors } from "./db/db";
 
 /**
  * LUMIN GOPHER - Folder Watcher Feature
@@ -16,7 +16,9 @@ import { logEvent, querySummary, queryTimeseries, queryRecentErrors } from "./db
 
 // This points to the directory where index.ts lives (e.g., /app/src)
 const PROJECT_ROOT = path.join(import.meta.dir, "..");
-const WATCH_PATH = path.join(PROJECT_ROOT, "watch_folder"); // <-- This is the folder Gopher will monitor
+const WATCH_PATH = path.join(PROJECT_ROOT, "watch_folder");
+const PORT = parseInt(process.env.PORT ?? "3030", 10);
+const LOCAL_HOST = process.env.LOCAL_HOST ?? "http://localhost";
 console.log(`[System] Gopher is watching: ${WATCH_PATH}`);
 
 // Ensure the directory exists so the watcher doesn't crash on startup
@@ -51,10 +53,10 @@ console.log(`[System] Gopher is now eyes-on: ${WATCH_PATH}`);
 
 
 // 1. Start the Management UI (The "Web Server")
-const DASHBOARD_PATH = path.join(import.meta.dir, "dashboard.html");
+const DASHBOARD_PATH = path.join(import.meta.dir, "client", "dashboard.html");
 
 const server = Bun.serve({
-    port: 3030,
+    port: PORT,
     hostname: "0.0.0.0", // <--- CRITICAL for Docker mapping
     async fetch(req) {
         const url = new URL(req.url);
@@ -106,7 +108,7 @@ const server = Bun.serve({
     },
 });
 
-console.log(`🚀 Gopher Dashboard online at http://aistation.local:${server.port}`);
+console.log(`🚀 Gopher Dashboard online at ${LOCAL_HOST}:${PORT}`);
 
 // 2. The "Nerd Radar" Timer (The "Chrono-Task")
 // Runs every 30 minutes (1,800,000 ms)

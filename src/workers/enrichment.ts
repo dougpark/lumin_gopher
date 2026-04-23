@@ -6,7 +6,7 @@
  * ai_tags: ["ai:error"] so it is removed from future queues permanently.
  */
 
-import { logEvent } from "./db";
+import { logEvent } from "../db/db";
 
 const LUMIN_API_URL = process.env.LUMIN_API_URL ?? "https://d11.me/api";
 const LUMIN_API_TOKEN = process.env.LUMIN_API_TOKEN ?? "";

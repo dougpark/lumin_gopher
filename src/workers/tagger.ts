@@ -8,7 +8,7 @@ import Bun from "bun";
 import path from "node:path";
 import { getDocumentProxy, extractText } from "unpdf";
 import mammoth from "mammoth";
-import { logEvent } from "./db";
+import { logEvent } from "../db/db";
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST ?? "http://host.docker.internal:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "gemma4:e4b";
