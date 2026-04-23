@@ -18,7 +18,7 @@ export type EventType =
 export type EventStatus = "success" | "error" | "sentinel" | "info";
 
 const DATA_DIR = path.join(import.meta.dir, "..", "data");
-const DB_PATH  = path.join(DATA_DIR, "gopher.sqlite");
+const DB_PATH = path.join(DATA_DIR, "gopher.sqlite");
 
 if (!existsSync(DATA_DIR)) {
     mkdirSync(DATA_DIR, { recursive: true });
@@ -79,7 +79,7 @@ export function queryTimeseries(sinceMs: number, type?: string, status?: string)
         WHERE timestamp >= ?`;
     const params: (string | number)[] = [sinceMs];
 
-    if (type)   { sql += ` AND type = ?`;   params.push(type); }
+    if (type) { sql += ` AND type = ?`; params.push(type); }
     if (status) { sql += ` AND status = ?`; params.push(status); }
 
     sql += ` GROUP BY bucket ORDER BY bucket ASC`;
@@ -98,8 +98,8 @@ export function querySummary(): {
 } {
     const now = Date.now();
     const h24 = now - 24 * 60 * 60 * 1000;
-    const d7  = now - 7  * 24 * 60 * 60 * 1000;
-    const w4  = now - 28 * 24 * 60 * 60 * 1000;
+    const d7 = now - 7 * 24 * 60 * 60 * 1000;
+    const w4 = now - 28 * 24 * 60 * 60 * 1000;
 
     const row = db.query<{
         total: number; success: number; error: number; sentinel: number;

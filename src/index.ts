@@ -78,8 +78,8 @@ const server = Bun.serve({
 
         // Metrics: timeseries (1-hour buckets)
         if (url.pathname === "/api/metrics/timeseries") {
-            const hours  = Math.min(parseInt(url.searchParams.get("hours")  ?? "48", 10), 168);
-            const type   = url.searchParams.get("type")   ?? undefined;
+            const hours = Math.min(parseInt(url.searchParams.get("hours") ?? "48", 10), 168);
+            const type = url.searchParams.get("type") ?? undefined;
             const status = url.searchParams.get("status") ?? undefined;
             const sinceMs = Date.now() - hours * 60 * 60 * 1000;
             return Response.json(queryTimeseries(sinceMs, type, status));
