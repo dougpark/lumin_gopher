@@ -6,6 +6,8 @@
  * ai_tags: ["ai:error"] so it is removed from future queues permanently.
  */
 
+import { logEvent } from "./db";
+
 const LUMIN_API_URL = process.env.LUMIN_API_URL ?? "https://d11.me/api";
 const LUMIN_API_TOKEN = process.env.LUMIN_API_TOKEN ?? "";
 const OLLAMA_HOST = process.env.OLLAMA_HOST ?? "http://host.docker.internal:11434";
@@ -68,6 +70,12 @@ async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult 
         // Reset fail count on success
         failCounts.delete(item.id);
 
+        logEvent("rss_enrichment", "success", {
+            item_id: item.id,
+            feed_name: item.feed_name,
+            ai_tags
+        });
+
         return { id: item.id, ai_tags, ai_summary };
 
     } catch (err) {
@@ -78,10 +86,11 @@ async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult 
         if (fails >= FAIL_THRESHOLD) {
             failCounts.delete(item.id);
             console.warn(`[Enrichment] Item ${item.id} hit fail threshold — marking as ai:error`);
-            // Return sentinel so item is stamped and removed from future queues
+            logEvent("rss_enrichment", "sentinel", { item_id: item.id, feed_name: item.feed_name });
             return { id: item.id, ai_tags: ["ai:error"] };
         }
 
+        logEvent("rss_enrichment", "error", { item_id: item.id, feed_name: item.feed_name, error: String(err) });
         return null;
     }
 }
@@ -98,6 +107,7 @@ async function patchResults(results: EnrichmentResult[]): Promise<void> {
 
     if (!res.ok) {
         console.error(`[Enrichment] PATCH failed: HTTP ${res.status} — ${await res.text()}`);
+        logEvent("api_error", "error", { endpoint: "PATCH /ai/items", status: res.status });
         return;
     }
 
@@ -118,12 +128,14 @@ export async function enrichRssQueue(): Promise<void> {
 
             if (!res.ok) {
                 console.error(`[Enrichment] Queue fetch failed: HTTP ${res.status}`);
+                logEvent("api_error", "error", { endpoint: "GET /ai/queue", status: res.status });
                 return;
             }
 
             data = await res.json() as { items: QueueItem[]; count: number };
         } catch (err) {
             console.error(`[Enrichment] Queue fetch error: ${err}`);
+            logEvent("api_error", "error", { endpoint: "GET /ai/queue", error: String(err) });
             return;
         }
 
@@ -145,6 +157,11 @@ export async function enrichRssQueue(): Promise<void> {
         if (results.length > 0) {
             await patchResults(results);
         }
+
+        logEvent("enrichment_cycle", "info", {
+            items_fetched: data.count,
+            items_patched: results.length
+        });
 
         // If we got a full batch there may be more — drain immediately
         if (data.count < 20) break;

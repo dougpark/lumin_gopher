@@ -8,6 +8,7 @@ import { watch } from "node:fs"; // Bun supports the standard FS watch API
 import path from "node:path";
 import { enrichRssQueue } from "./enrichment";
 import { tagFileWithOllama } from "./tagger";
+import { logEvent, querySummary, queryTimeseries, queryRecentErrors } from "./db";
 
 /**
  * LUMIN GOPHER - Folder Watcher Feature
@@ -50,13 +51,15 @@ console.log(`[System] Gopher is now eyes-on: ${WATCH_PATH}`);
 
 
 // 1. Start the Management UI (The "Web Server")
+const DASHBOARD_PATH = path.join(import.meta.dir, "dashboard.html");
+
 const server = Bun.serve({
     port: 3030,
     hostname: "0.0.0.0", // <--- CRITICAL for Docker mapping
-    fetch(req) {
+    async fetch(req) {
         const url = new URL(req.url);
 
-        // Simple routing for your stats page
+        // Health endpoint (used by Docker healthcheck)
         if (url.pathname === "/stats") {
             return Response.json({
                 status: "online",
@@ -67,18 +70,39 @@ const server = Bun.serve({
             });
         }
 
-        // Main Dashboard View
-        return new Response(`
-      <body style="font-family: sans-serif; background: #F0F2F5; padding: 40px; color: #1F1F1F;">
-        <h1 style="color: #4285F4;">Lumin Gopher</h1>
-        <p>Status: <strong>Active and Scouting</strong></p>
-        <hr style="border: 1px solid #E3E3E3;" />
-        <p>Next RSS forage in: <span id="timer">...</span></p>
-        <a href="/stats" style="color: #4285F4; text-decoration: none;">View JSON Stats</a>
-      </body>
-    `, {
-            headers: { "Content-Type": "text/html" },
-        });
+        // Metrics: summary counts
+        if (url.pathname === "/api/metrics/summary") {
+            const summary = querySummary();
+            return Response.json({ ...summary, uptime_seconds: Math.floor(process.uptime()) });
+        }
+
+        // Metrics: timeseries (1-hour buckets)
+        if (url.pathname === "/api/metrics/timeseries") {
+            const hours  = Math.min(parseInt(url.searchParams.get("hours")  ?? "48", 10), 168);
+            const type   = url.searchParams.get("type")   ?? undefined;
+            const status = url.searchParams.get("status") ?? undefined;
+            const sinceMs = Date.now() - hours * 60 * 60 * 1000;
+            return Response.json(queryTimeseries(sinceMs, type, status));
+        }
+
+        // Metrics: recent errors
+        if (url.pathname === "/api/metrics/recent-errors") {
+            const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20", 10), 100);
+            const rows = queryRecentErrors(limit).map(r => ({
+                ...r,
+                details: r.details ? JSON.parse(r.details) : null
+            }));
+            return Response.json(rows);
+        }
+
+        // Main Dashboard
+        if (url.pathname === "/") {
+            return new Response(Bun.file(DASHBOARD_PATH), {
+                headers: { "Content-Type": "text/html" }
+            });
+        }
+
+        return new Response("Not found", { status: 404 });
     },
 });
 
@@ -98,6 +122,7 @@ setInterval(async () => {
 // 3. The "Hello World" Startup log
 // Run enrichment immediately on startup to drain any backlog
 enrichRssQueue().catch(err => console.error(`[Enrichment] Startup run failed: ${err}`));
+logEvent("system", "info", { event: "startup", model: process.env.OLLAMA_MODEL ?? "gemma4:e4b" });
 
 console.log("--------------------------------------------------");
 console.log("Hello, Doug. The Gopher is now watching the lab.");

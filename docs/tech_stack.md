@@ -6,6 +6,14 @@
 - always look for docker specific requirements Ex. file system access, port mapping
 - Docker GPU Support: Ensure the nvidia-container-toolkit is installed on the host. Use runtime: nvidia in docker-compose.yml for any service requiring direct VRAM access.
 
+### Bun.js
+- Use Bun.js as the runtime and package manager. All scripts should be run with bun commands (e.g., bun install, bun run). Avoid npm or yarn.
+- Bun's built-in file watcher (bun run --watch) should be used for development to enable hot-reloading of the Gopher worker.
+
+### .env and Configuration
+- Use a .env file for all configuration variables. Access these via process.env in the codebase. This allows for easy overrides in different environments (development, staging, production) without changing code.
+- Ensure that sensitive information (like API tokens) is not hardcoded and is only accessed through environment variables.
+
 ### Networking
 - Networking: Use extra_hosts: ["host.docker.internal:host-gateway"] in docker-compose.yml. This allows the Bun runtime inside Docker to communicate with services running on the Ubuntu host (like Ollama) using a consistent internal URL.
 
@@ -21,14 +29,14 @@
 
 ### Core Tech Stack
 • Runtime & Package Manager: Bun.js (Use bun commands for installing, testing, and running).
-- hono
-- SQLite
+- Hono for the web server and API routes.
+- SQLite for the database (use Bun's built-in SQLite support).
 • Styling: Tailwind CSS. Utilize the custom tailwind.config.js (Gemini-Modern aesthetic) provided previously.
 
 ### Architectural Standards
 • Module System: ES Modules (ESM) only. Use import/export syntax. No require.
 • Organization: Keep logic modular. Separate concerns into: 
-• /src/index.js (Worker entry point) 
+• /src/index.ts (Worker entry point) 
 • /src/db/ (Database schemas and migrations) 
 • /src/components/ (UI components) 
 • /src/utils/ (Helper functions)

@@ -8,6 +8,7 @@ import Bun from "bun";
 import path from "node:path";
 import { getDocumentProxy, extractText } from "unpdf";
 import mammoth from "mammoth";
+import { logEvent } from "./db";
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST ?? "http://host.docker.internal:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "gemma4:e4b";
@@ -91,10 +92,20 @@ export async function tagFileWithOllama(watchPath: string, filename: string): Pr
         if (summary) console.log(`[Tagger] Summary: ${summary}`);
 
         if (!tags && !summary) {
-            console.warn(`[Tagger] Ollama returned no usable fields for "${filename}": ${JSON.stringify(raw)}`);
+            const msg = `Ollama returned no usable fields for "${filename}": ${JSON.stringify(raw)}`;
+            console.warn(`[Tagger] ${msg}`);
+            logEvent("file_drop", "error", { filename, error: msg });
+            return;
         }
+
+        logEvent("file_drop", "success", {
+            filename,
+            tags: tags ?? "",
+            summary: summary ?? ""
+        });
 
     } catch (err) {
         console.error(`[Tagger] Failed to tag "${filename}": ${err}`);
+        logEvent("file_drop", "error", { filename, error: String(err) });
     }
 }
