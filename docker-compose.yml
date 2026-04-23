@@ -1,12 +1,26 @@
 services:
   gopher:
     image: oven/bun:latest
+    restart: unless-stopped
     user: "1000:1000" # Uses your host User ID and Group ID
     ports:
       - "3030:3030"  # [Host Port] : [Container Port]
     volumes:
-      - .:/app  # This is the magic "Bind Mount"
+      - .:/app  # Bind mount — keeps node_modules and SQLite on host for backups
     working_dir: /app
+    env_file:
+      - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3030/stats"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     command: sh -c "bun install && bun run --watch src/index.ts"
