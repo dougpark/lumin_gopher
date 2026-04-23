@@ -6,6 +6,9 @@
 import Bun from "bun";
 import { watch } from "node:fs"; // Bun supports the standard FS watch API
 import path from "node:path";
+import { getDocumentProxy, extractText } from "unpdf";
+import mammoth from "mammoth";
+import { enrichRssQueue } from "./enrichment";
 
 /**
  * LUMIN GOPHER - Folder Watcher Feature
@@ -29,8 +32,54 @@ if (!existsSync(WATCH_PATH)) {
  * OLLAMA TAGGING
  * Calls local Ollama to generate 5 tags and a 2-sentence summary for a discovered file.
  */
+
+const TEXT_EXTENSIONS = new Set([
+    ".txt", ".md", ".markdown", ".ts", ".js", ".json", ".csv",
+    ".html", ".htm", ".xml", ".yaml", ".yml", ".toml", ".log",
+    ".sh", ".bash", ".py", ".rb", ".rs", ".go", ".c", ".cpp",
+    ".h", ".css", ".scss", ".sql"
+]);
+
+async function extractFileContent(filePath: string): Promise<string | null> {
+    const ext = path.extname(filePath).toLowerCase();
+
+    if (TEXT_EXTENSIONS.has(ext)) {
+        const text = await Bun.file(filePath).text();
+        return text.slice(0, 1000);
+    }
+
+    if (ext === ".pdf") {
+        const buffer = await Bun.file(filePath).arrayBuffer();
+        const pdf = await getDocumentProxy(new Uint8Array(buffer));
+        const { text } = await extractText(pdf, { mergePages: true });
+        return text.slice(0, 1000);
+    }
+
+    if (ext === ".docx") {
+        const buffer = await Bun.file(filePath).arrayBuffer();
+        const { value } = await mammoth.extractRawText({ buffer: Buffer.from(buffer) });
+        return value.slice(0, 1000);
+    }
+
+    // Unknown/binary format — fall back to filename only
+    return null;
+}
+
 async function tagFileWithOllama(filename: string): Promise<void> {
-    const prompt = `You are a file archivist. Given the filename "${filename}", generate exactly 5 relevant tags and a 2-sentence summary describing what this file likely contains or represents. Respond ONLY with valid JSON using this exact structure: {"tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], "summary": "First sentence. Second sentence."}`;
+    const filePath = path.join(WATCH_PATH, filename);
+    let contentSnippet: string | null = null;
+
+    try {
+        contentSnippet = await extractFileContent(filePath);
+    } catch (err) {
+        console.warn(`[Ollama] Could not extract content from "${filename}", using filename only: ${err}`);
+    }
+
+    const contentClause = contentSnippet
+        ? `\n\nHere are the first 1000 characters of the file contents:\n<content>\n${contentSnippet}\n</content>`
+        : "";
+
+    const prompt = `You are a file archivist. Given the filename "${filename}"${contentClause}, generate exactly 5 relevant tags and a 2-sentence summary describing what this file contains. Respond ONLY with valid JSON using this exact structure: {"tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], "summary": "First sentence. Second sentence."}`;
 
     try {
         const response = await fetch("http://host.docker.internal:11434/api/generate", {
@@ -124,16 +173,16 @@ const FORAGE_INTERVAL = 30 * 60 * 1000;
 
 setInterval(async () => {
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`[${timestamp}] 🔍 Gopher is heading out to forage RSS feeds...`);
-
-    // This is where your fetch logic to Cloudflare will eventually go
-    // await forageFeeds();
-
-    console.log(`[${timestamp}] ✅ Foraging complete. Signal stabilized.`);
+    console.log(`[${timestamp}] 🔍 Gopher is heading out to enrich RSS queue...`);
+    await enrichRssQueue();
+    console.log(`[${timestamp}] ✅ Enrichment cycle complete.`);
 }, FORAGE_INTERVAL);
 
 // 3. The "Hello World" Startup log
+// Run enrichment immediately on startup to drain any backlog
+enrichRssQueue().catch(err => console.error(`[Enrichment] Startup run failed: ${err}`));
+
 console.log("--------------------------------------------------");
 console.log("Hello, Doug. The Gopher is now watching the lab.");
-console.log("Systems: Web Server [OK] | Interval Timer [OK]");
+console.log("Systems: Web Server [OK] | Interval Timer [OK] | Enrichment [OK]");
 console.log("--------------------------------------------------");

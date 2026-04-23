@@ -4,6 +4,8 @@
 node_modules/
 bun.lockb
 
+watch_folder
+
 # Environment / Secrets
 # (Never commit your actual API keys!)
 .env

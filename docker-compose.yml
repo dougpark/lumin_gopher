@@ -9,4 +9,4 @@ services:
     working_dir: /app
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: bun run --watch src/index.ts # Bun's built-in watcher!
+    command: sh -c "bun install && bun run --watch src/index.ts"
