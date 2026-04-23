@@ -90,6 +90,104 @@
             </div>
         </section>
 
+        <!-- System Health -->
+        <section class="bg-white rounded-gemini-lg p-6 shadow-sm border border-gemini-border">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-semibold text-gemini-text">System Health</h2>
+                <span id="sys-updated" class="text-xs text-gemini-muted"></span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3" id="sys-health-grid">
+                <!-- CPU -->
+                <div class="rounded-xl border border-gemini-border p-4 flex flex-col gap-1">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide">CPU Load</p>
+                    <p id="sys-cpu" class="text-2xl font-bold text-gemini-text">—</p>
+                    <div class="h-1.5 rounded-full bg-gemini-surface overflow-hidden mt-1">
+                        <div id="sys-cpu-bar" class="h-full rounded-full bg-green-400 transition-all" style="width:0%">
+                        </div>
+                    </div>
+                </div>
+                <!-- RAM -->
+                <div class="rounded-xl border border-gemini-border p-4 flex flex-col gap-1">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide">RAM</p>
+                    <p id="sys-ram" class="text-2xl font-bold text-gemini-text">—</p>
+                    <div class="h-1.5 rounded-full bg-gemini-surface overflow-hidden mt-1">
+                        <div id="sys-ram-bar" class="h-full rounded-full bg-green-400 transition-all" style="width:0%">
+                        </div>
+                    </div>
+                </div>
+                <!-- Disk / -->
+                <div class="rounded-xl border border-gemini-border p-4 flex flex-col gap-1">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide">Disk /</p>
+                    <p id="sys-disk-root" class="text-2xl font-bold text-gemini-text">—</p>
+                    <div class="h-1.5 rounded-full bg-gemini-surface overflow-hidden mt-1">
+                        <div id="sys-disk-root-bar" class="h-full rounded-full bg-green-400 transition-all"
+                            style="width:0%"></div>
+                    </div>
+                </div>
+                <!-- Disk /mnt/world -->
+                <div class="rounded-xl border border-gemini-border p-4 flex flex-col gap-1">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide">Disk /mnt/world</p>
+                    <p id="sys-disk-world" class="text-2xl font-bold text-gemini-text">—</p>
+                    <div class="h-1.5 rounded-full bg-gemini-surface overflow-hidden mt-1">
+                        <div id="sys-disk-world-bar" class="h-full rounded-full bg-green-400 transition-all"
+                            style="width:0%"></div>
+                    </div>
+                </div>
+                <!-- GPU Load -->
+                <div class="rounded-xl border border-gemini-border p-4 flex flex-col gap-1" id="sys-gpu-tile">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide">GPU Load</p>
+                    <p id="sys-gpu-load" class="text-2xl font-bold text-gemini-text">—</p>
+                    <div class="h-1.5 rounded-full bg-gemini-surface overflow-hidden mt-1">
+                        <div id="sys-gpu-load-bar" class="h-full rounded-full bg-green-400 transition-all"
+                            style="width:0%"></div>
+                    </div>
+                </div>
+                <!-- GPU VRAM -->
+                <div class="rounded-xl border border-gemini-border p-4 flex flex-col gap-1">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide">GPU VRAM</p>
+                    <p id="sys-gpu-vram" class="text-2xl font-bold text-gemini-text">—</p>
+                    <div class="h-1.5 rounded-full bg-gemini-surface overflow-hidden mt-1">
+                        <div id="sys-gpu-vram-bar" class="h-full rounded-full bg-green-400 transition-all"
+                            style="width:0%"></div>
+                    </div>
+                </div>
+                <!-- GPU Temp -->
+                <div class="rounded-xl border border-gemini-border p-4 flex flex-col gap-1">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide">GPU Temp</p>
+                    <p id="sys-gpu-temp" class="text-2xl font-bold text-gemini-text">—</p>
+                    <p class="text-xs text-gemini-muted">°C</p>
+                </div>
+                <!-- GPU Power -->
+                <div class="rounded-xl border border-gemini-border p-4 flex flex-col gap-1">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide">GPU Power</p>
+                    <p id="sys-gpu-power" class="text-2xl font-bold text-gemini-text">—</p>
+                    <p class="text-xs text-gemini-muted">Watts</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Ollama Models -->
+        <section class="bg-white rounded-gemini-lg p-6 shadow-sm border border-gemini-border">
+            <h2 class="text-base font-semibold text-gemini-text mb-4">Ollama — Loaded Models</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead>
+                        <tr class="border-b border-gemini-border text-gemini-muted text-xs uppercase tracking-wide">
+                            <th class="pb-2 pr-4 font-medium">Model</th>
+                            <th class="pb-2 pr-4 font-medium">Processor</th>
+                            <th class="pb-2 pr-4 font-medium">VRAM</th>
+                            <th class="pb-2 font-medium">Total Size</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ollama-models-body">
+                        <tr>
+                            <td colspan="4" class="py-6 text-center text-gemini-muted text-sm">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
         <!-- Timeseries Chart -->
         <section class="bg-white rounded-gemini-lg p-6 shadow-sm border border-gemini-border">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
@@ -190,7 +288,8 @@
                 document.getElementById('stat-7d').textContent = d.last_7d.toLocaleString();
                 document.getElementById('stat-4w').textContent = d.last_4w.toLocaleString();
                 document.getElementById('stat-uptime').textContent = fmtUptime(d.uptime_seconds);
-                const rate = d.total > 0 ? ((d.success / d.total) * 100).toFixed(1) + '%' : '—';
+                const workload = d.success + d.error + d.sentinel;
+                const rate = workload > 0 ? ((d.success / workload) * 100).toFixed(1) + '%' : '—';
                 document.getElementById('stat-rate').textContent = rate;
                 document.getElementById('status-dot').className = 'inline-block w-2.5 h-2.5 rounded-full bg-green-400';
                 document.getElementById('status-label').textContent = 'Online';
@@ -239,6 +338,91 @@
             } catch { /* silent */ }
         }
 
+        // ── System metrics helpers ───────────────────────────────────────────────
+        function usePct(pct) {
+            if (pct === null || pct === undefined) return { text: '—', cls: 'text-gemini-text', barCls: 'bg-gray-300' };
+            const text = pct.toFixed(1) + '%';
+            if (pct >= 90) return { text, cls: 'text-red-500', barCls: 'bg-red-400' };
+            if (pct >= 70) return { text, cls: 'text-amber-500', barCls: 'bg-amber-400' };
+            return { text, cls: 'text-green-500', barCls: 'bg-green-400' };
+        }
+        function fmtBytes(b) {
+            if (!b) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let i = 0; while (b >= 1024 && i < 4) { b /= 1024; i++; }
+            return b.toFixed(1) + ' ' + units[i];
+        }
+        function setMetric(id, text, colorCls) {
+            const el = document.getElementById(id);
+            if (el) { el.textContent = text; el.className = 'text-2xl font-bold ' + colorCls; }
+        }
+        function setBar(id, pct, colorCls) {
+            const el = document.getElementById(id);
+            if (el) { el.style.width = Math.min(pct ?? 0, 100) + '%'; el.className = 'h-full rounded-full transition-all ' + colorCls; }
+        }
+
+        async function loadSystemMetrics() {
+            try {
+                const res = await fetch('/api/metrics/system');
+                if (!res.ok) return;
+                const d = await res.json();
+
+                // CPU
+                const cpu = usePct(d.cpu?.load);
+                setMetric('sys-cpu', cpu.text, cpu.cls);
+                setBar('sys-cpu-bar', d.cpu?.load, cpu.barCls);
+
+                // RAM
+                const ram = usePct(d.ram?.use);
+                const ramText = d.ram ? `${fmtBytes(d.ram.used)} / ${fmtBytes(d.ram.total)}` : '—';
+                document.getElementById('sys-ram').textContent = ram.text;
+                document.getElementById('sys-ram').className = 'text-2xl font-bold ' + ram.cls;
+                setBar('sys-ram-bar', d.ram?.use, ram.barCls);
+
+                // Disks
+                const diskMap = {};
+                (d.disks ?? []).forEach(disk => { diskMap[disk.mount] = disk; });
+                const diskRoot = usePct(diskMap['/']?.use);
+                setMetric('sys-disk-root', diskRoot.text, diskRoot.cls);
+                setBar('sys-disk-root-bar', diskMap['/']?.use, diskRoot.barCls);
+                const diskWorld = usePct(diskMap['/mnt/world']?.use);
+                setMetric('sys-disk-world', diskWorld.text, diskWorld.cls);
+                setBar('sys-disk-world-bar', diskMap['/mnt/world']?.use, diskWorld.barCls);
+
+                // GPU
+                if (d.gpu) {
+                    const gpuLoad = usePct(d.gpu.utilization);
+                    setMetric('sys-gpu-load', gpuLoad.text, gpuLoad.cls);
+                    setBar('sys-gpu-load-bar', d.gpu.utilization, gpuLoad.barCls);
+                    const gpuVram = usePct(d.gpu.memUse);
+                    setMetric('sys-gpu-vram', gpuVram.text, gpuVram.cls);
+                    setBar('sys-gpu-vram-bar', d.gpu.memUse, gpuVram.barCls);
+                    const tempCls = d.gpu.temperature >= 85 ? 'text-red-500' : d.gpu.temperature >= 70 ? 'text-amber-500' : 'text-green-500';
+                    setMetric('sys-gpu-temp', d.gpu.temperature.toFixed(0), tempCls);
+                    setMetric('sys-gpu-power', d.gpu.powerDraw.toFixed(0), 'text-gemini-text');
+                } else {
+                    ['sys-gpu-load', 'sys-gpu-vram', 'sys-gpu-temp', 'sys-gpu-power'].forEach(id => setMetric(id, 'N/A', 'text-gemini-muted'));
+                }
+
+                // Ollama models
+                const tbody = document.getElementById('ollama-models-body');
+                if (!d.ollama || d.ollama.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="py-6 text-center text-gemini-muted text-sm">No models currently loaded</td></tr>`;
+                } else {
+                    tbody.innerHTML = d.ollama.map(m => `
+                        <tr class="border-b border-gemini-border last:border-0 hover:bg-gemini-surface transition-colors">
+                            <td class="py-3 pr-4 font-mono text-xs text-gemini-text">${m.name}</td>
+                            <td class="py-3 pr-4 text-gemini-muted">${m.processor}</td>
+                            <td class="py-3 pr-4 text-gemini-muted">${fmtBytes(m.vram)}</td>
+                            <td class="py-3 text-gemini-muted">${fmtBytes(m.size)}</td>
+                        </tr>`).join('');
+                }
+
+                document.getElementById('sys-updated').textContent =
+                    'Checked ' + new Date(d.collectedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            } catch { /* silent */ }
+        }
+
         // ── Auto-refresh ─────────────────────────────────────────────────────────
         async function refresh() {
             await Promise.all([loadSummary(), loadTimeseries(), loadErrors()]);
@@ -250,7 +434,9 @@
         document.getElementById('filter-status').addEventListener('change', loadTimeseries);
 
         refresh();
+        loadSystemMetrics();
         setInterval(refresh, 60_000);
+        setInterval(loadSystemMetrics, 30_000);
     </script>
 </body>
 

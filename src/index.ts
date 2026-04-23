@@ -9,6 +9,7 @@ import path from "node:path";
 import { enrichRssQueue } from "./workers/enrichment";
 import { tagFileWithOllama } from "./workers/tagger";
 import { logEvent, querySummary, queryTimeseries, queryRecentErrors } from "./db/db";
+import { logSystemMetrics, collectSnapshot } from "./workers/sysmetrics";
 
 /**
  * LUMIN GOPHER - Folder Watcher Feature
@@ -97,6 +98,12 @@ const server = Bun.serve({
             return Response.json(rows);
         }
 
+        // Metrics: latest system snapshot (live collection every request)
+        if (url.pathname === "/api/metrics/system") {
+            const snap = await collectSnapshot();
+            return Response.json(snap);
+        }
+
         // Main Dashboard
         if (url.pathname === "/") {
             return new Response(Bun.file(DASHBOARD_PATH), {
@@ -113,6 +120,9 @@ console.log(`🚀 Gopher Dashboard online at ${LOCAL_HOST}:${PORT}`);
 // 2. The "Nerd Radar" Timer (The "Chrono-Task")
 // Runs every 30 minutes (1,800,000 ms)
 const FORAGE_INTERVAL = 30 * 60 * 1000;
+const SYSMETRICS_INTERVAL = 5 * 60 * 1000;
+
+setInterval(() => { logSystemMetrics().catch(err => console.error(`[SysMetrics] ${err}`)); }, SYSMETRICS_INTERVAL);
 
 setInterval(async () => {
     const timestamp = new Date().toLocaleTimeString();
@@ -124,6 +134,7 @@ setInterval(async () => {
 // 3. The "Hello World" Startup log
 // Run enrichment immediately on startup to drain any backlog
 enrichRssQueue().catch(err => console.error(`[Enrichment] Startup run failed: ${err}`));
+logSystemMetrics().catch(err => console.error(`[SysMetrics] Startup run failed: ${err}`));
 logEvent("system", "info", { event: "startup", model: process.env.OLLAMA_MODEL ?? "gemma4:e4b" });
 
 console.log("--------------------------------------------------");

@@ -8,6 +8,7 @@ services:
     volumes:
       - .:/app  # Bind mount — keeps node_modules and SQLite on host for backups
       - ./data:/app/data  # SQLite database — persists across container rebuilds
+      - /mnt/world:/mnt/world:ro  # Read-only mount for disk usage metrics
     working_dir: /app
     env_file:
       - .env
@@ -24,4 +25,11 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility]
     command: sh -c "bun install && bun run --watch src/index.ts"
