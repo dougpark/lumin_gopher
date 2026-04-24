@@ -1,5 +1,5 @@
-# Watch Folder for Lumin
-- use the existing prototype code in this repo to create a file watcher that detects new files in a specified folder (e.g., "watch_folder")
+# Inbox Folder for Lumin
+- use the existing prototype code in this repo to create a file watcher that detects new files in a specified folder (e.g., "inbox")
 - when a new file is detected, read its contents and metadata (e.g., filename, creation date)
 - determine the type of data (e.g., journal entry, email, calendar event, weather data) based on the file format or naming convention
 - convert the data into a format that can be imported into the Lumin database using the API
