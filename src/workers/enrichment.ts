@@ -1,9 +1,9 @@
 /**
  * AI Enrichment Module
- * Fetches unprocessed RSS items from the remote API, enriches each with
- * Ollama-generated tags and a summary, and patches results back in one batch.
- * Includes a per-item failure counter: after 3 failures the item is patched with
- * ai_tags: ["ai:error"] so it is removed from future queues permanently.
+ * Fetches unprocessed RSS items and bookmarks from the remote API, enriches
+ * each with Ollama-generated tags and a summary, and patches results back in
+ * one batch. Includes a per-item failure counter: after 3 failures the item is
+ * patched with ai_tags: ["ai:error"] so it is removed from future queues permanently.
  */
 
 import { logEvent } from "../db/db";
@@ -15,32 +15,60 @@ const OLLAMA_HOST = process.env.OLLAMA_HOST ?? "http://host.docker.internal:1143
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "gemma4:e4b";
 
 const FAIL_THRESHOLD = 3;
-const failCounts = new Map<number, number>();
+// Key is composite "source:id" to prevent collision between rss id 42 and bookmark id 42
+const failCounts = new Map<string, number>();
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 interface QueueItem {
+    source: "rss" | "bookmark";
     id: number;
     url: string;
     title: string;
-    summary: string;
-    tag_list: string;
-    published_at: string;
-    feed_name: string;
+    body: string;
+    tags: string[];
+    created_at: string;
+    context: {
+        feed_name?: string;
+        user_id?: number;
+    };
 }
 
 interface EnrichmentResult {
+    source: "rss" | "bookmark";
     id: number;
     ai_tags?: string[];
     ai_summary?: string;
 }
 
+interface QueueResponse {
+    items: QueueItem[];
+    count: number;
+    total_pending: number;
+    source_breakdown: { rss: number; bookmarks: number };
+}
+
+// ── Core processor ───────────────────────────────────────────────────────────
+
 async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult | null> {
+    const sourceLabel = item.source === "bookmark" ? "bookmark archivist" : "RSS feed archivist";
     const prompt =
-        `You are an RSS feed archivist. Given the article title and description below, ` +
+        `You are a ${sourceLabel}. Given the article title and description below, ` +
         `generate exactly 5 relevant lowercase tags and a clean 2-sentence summary. ` +
         `Respond ONLY with valid JSON using this exact structure: ` +
         `{"ai_tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], "ai_summary": "First sentence. Second sentence."}\n\n` +
         `Title: ${item.title}\n` +
-        `Description: ${item.summary || "(none)"}`;
+        `Description: ${item.body || "(none)"}`;
+
+    const failKey = `${item.source}:${item.id}`;
+    const eventType = item.source === "bookmark" ? "bookmark_enrichment" : "rss_enrichment";
+    const contextDetails = {
+        item_id: item.id,
+        source: item.source,
+        feed_name: item.context?.feed_name,
+        title: item.title,
+        url: item.url,
+    };
 
     try {
         const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
@@ -69,40 +97,39 @@ async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult 
         }
 
         // Reset fail count on success
-        failCounts.delete(item.id);
+        failCounts.delete(failKey);
 
         // Capture GPU state immediately after inference while it's still warm
         const gpu = collectGpu();
 
-        logEvent("rss_enrichment", "success", {
-            item_id: item.id,
-            feed_name: item.feed_name,
-            title: item.title,
-            url: item.url,
+        logEvent(eventType, "success", {
+            ...contextDetails,
             ai_tags,
             gpu_load: gpu?.utilization ?? null,
             gpu_vram_mib: gpu ? `${gpu.memUsed}/${gpu.memTotal}` : null,
             gpu_temp_c: gpu?.temperature ?? null
         });
 
-        return { id: item.id, ai_tags, ai_summary };
+        return { source: item.source, id: item.id, ai_tags, ai_summary };
 
     } catch (err) {
-        const fails = (failCounts.get(item.id) ?? 0) + 1;
-        failCounts.set(item.id, fails);
-        console.warn(`[Enrichment] Item ${item.id} failed (attempt ${fails}/${FAIL_THRESHOLD}): ${err}`);
+        const fails = (failCounts.get(failKey) ?? 0) + 1;
+        failCounts.set(failKey, fails);
+        console.warn(`[Enrichment] ${item.source}:${item.id} failed (attempt ${fails}/${FAIL_THRESHOLD}): ${err}`);
 
         if (fails >= FAIL_THRESHOLD) {
-            failCounts.delete(item.id);
-            console.warn(`[Enrichment] Item ${item.id} hit fail threshold — marking as ai:error`);
-            logEvent("rss_enrichment", "sentinel", { item_id: item.id, feed_name: item.feed_name, title: item.title, url: item.url });
-            return { id: item.id, ai_tags: ["ai:error"] };
+            failCounts.delete(failKey);
+            console.warn(`[Enrichment] ${item.source}:${item.id} hit fail threshold — marking as ai:error`);
+            logEvent(eventType, "sentinel", contextDetails);
+            return { source: item.source, id: item.id, ai_tags: ["ai:error"] };
         }
 
-        logEvent("rss_enrichment", "error", { item_id: item.id, feed_name: item.feed_name, title: item.title, url: item.url, error: String(err) });
+        logEvent(eventType, "error", { ...contextDetails, error: String(err) });
         return null;
     }
 }
+
+// ── PATCH ────────────────────────────────────────────────────────────────────
 
 async function patchResults(results: EnrichmentResult[]): Promise<void> {
     const res = await fetch(`${LUMIN_API_URL}/ai/items`, {
@@ -124,14 +151,16 @@ async function patchResults(results: EnrichmentResult[]): Promise<void> {
     console.log(`[Enrichment] Updated ${updated} item(s).`);
 }
 
-export async function enrichRssQueue(): Promise<void> {
+// ── Main export ──────────────────────────────────────────────────────────────
+
+export async function enrichQueue(): Promise<void> {
     const authHeaders = { "Authorization": `Bearer ${LUMIN_API_TOKEN}` };
 
     while (true) {
-        let data: { items: QueueItem[]; count: number };
+        let data: QueueResponse;
 
         try {
-            const res = await fetch(`${LUMIN_API_URL}/ai/queue?limit=20`, {
+            const res = await fetch(`${LUMIN_API_URL}/ai/queue?source=all&limit=20`, {
                 headers: authHeaders
             });
 
@@ -141,7 +170,7 @@ export async function enrichRssQueue(): Promise<void> {
                 return;
             }
 
-            data = await res.json() as { items: QueueItem[]; count: number };
+            data = await res.json() as QueueResponse;
         } catch (err) {
             console.error(`[Enrichment] Queue fetch error: ${err}`);
             logEvent("api_error", "error", { endpoint: "GET /ai/queue", error: String(err) });
@@ -153,7 +182,7 @@ export async function enrichRssQueue(): Promise<void> {
             return;
         }
 
-        console.log(`[Enrichment] Processing ${data.count} item(s)...`);
+        console.log(`[Enrichment] Processing ${data.count} item(s) — RSS: ${data.source_breakdown?.rss ?? 0}, Bookmarks: ${data.source_breakdown?.bookmarks ?? 0} total pending.`);
 
         const results: EnrichmentResult[] = [];
         for (const item of data.items) {
@@ -169,10 +198,14 @@ export async function enrichRssQueue(): Promise<void> {
 
         logEvent("enrichment_cycle", "info", {
             items_fetched: data.count,
-            items_patched: results.length
+            items_patched: results.length,
+            source_breakdown: data.source_breakdown ?? null
         });
 
         // If we got a full batch there may be more — drain immediately
         if (data.count < 20) break;
     }
 }
+
+// Backward-compat alias — remove once all callers are updated
+export const enrichRssQueue = enrichQueue;

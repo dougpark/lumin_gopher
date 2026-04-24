@@ -6,7 +6,7 @@
 import Bun from "bun";
 import { watch } from "node:fs"; // Bun supports the standard FS watch API
 import path from "node:path";
-import { enrichRssQueue } from "./workers/enrichment";
+import { enrichQueue } from "./workers/enrichment";
 import { tagFileWithOllama } from "./workers/tagger";
 import { logEvent, querySummary, queryTimeseries, queryRecentErrors, queryEventsByRange } from "./db/db";
 import { logSystemMetrics, collectSnapshot } from "./workers/sysmetrics";
@@ -147,13 +147,13 @@ setInterval(() => {
 
 setInterval(async () => {
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`[${timestamp}] 🔍 Gopher is heading out to enrich RSS queue...`);
-    await enrichRssQueue();
+    console.log(`[${timestamp}] 🔍 Gopher is heading out to enrich queue...`);
+    await enrichQueue();
     console.log(`[${timestamp}] ✅ Enrichment cycle complete.`);
 }, FORAGE_INTERVAL);
 
 // Run enrichment immediately on startup to drain any backlog
-enrichRssQueue().catch(err => console.error(`[Enrichment] Startup run failed: ${err}`));
+enrichQueue().catch(err => console.error(`[Enrichment] Startup run failed: ${err}`));
 logSystemMetrics().catch(err => console.error(`[SysMetrics] Startup run failed: ${err}`));
 logEvent("system", "info", { event: "startup", model: process.env.OLLAMA_MODEL ?? "gemma4:e4b" });
 

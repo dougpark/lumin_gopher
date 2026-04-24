@@ -11,6 +11,7 @@ import path from "node:path";
 export type EventType =
     | "file_drop"
     | "rss_enrichment"
+    | "bookmark_enrichment"
     | "enrichment_cycle"
     | "api_error"
     | "system"

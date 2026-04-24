@@ -198,6 +198,7 @@
                         <option value="">All Types</option>
                         <option value="file_drop">File Drop</option>
                         <option value="rss_enrichment">RSS Enrichment</option>
+                        <option value="bookmark_enrichment">Bookmark Enrichment</option>
                         <option value="enrichment_cycle">Enrichment Cycle</option>
                         <option value="api_error">API Error</option>
                         <option value="system">System</option>
@@ -305,12 +306,13 @@
             const colors = {
                 file_drop: 'bg-purple-100 text-purple-700',
                 rss_enrichment: 'bg-blue-100 text-blue-700',
+                bookmark_enrichment: 'bg-indigo-100 text-indigo-700',
                 enrichment_cycle: 'bg-teal-100 text-teal-700',
                 api_error: 'bg-red-100 text-red-700',
                 system: 'bg-gray-100 text-gray-600',
             };
             const cls = colors[type] ?? 'bg-gray-100 text-gray-600';
-            return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${cls}">${type.replace('_', ' ')}</span>`;
+            return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${cls}">${type.replace(/_/g, ' ')}</span>`;
         }
 
         // ── Load summary ─────────────────────────────────────────────────────────
@@ -386,7 +388,10 @@
                 tbody.innerHTML = rows.map(r => {
                     const d = r.details ?? {};
                     let msg;
-                    if (r.type === 'rss_enrichment' && (d.title || d.url)) {
+                    if ((r.type === 'rss_enrichment' || r.type === 'bookmark_enrichment') && (d.title || d.url)) {
+                        const sourceBadge = d.source === 'bookmark'
+                            ? `<span class="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700 mr-1">Bookmark</span>`
+                            : `<span class="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 mr-1">RSS</span>`;
                         const title = d.title ? `<span class="font-medium text-gemini-text">${d.title}</span>` : '';
                         const feed = d.feed_name ? `<span class="text-gemini-muted ml-1">[${d.feed_name}]</span>` : '';
                         const link = d.url ? `<a href="${d.url}" target="_blank" rel="noopener" class="block text-gemini-blue hover:underline truncate max-w-xs">${d.url}</a>` : '';
@@ -396,7 +401,7 @@
                         if (d.gpu_vram_mib) gpuParts.push(`VRAM ${d.gpu_vram_mib} MiB`);
                         if (d.gpu_temp_c !== null && d.gpu_temp_c !== undefined) gpuParts.push(`${d.gpu_temp_c}°C`);
                         const gpu = gpuParts.length ? `<span class="text-xs text-purple-600 font-mono">${gpuParts.join(' · ')}</span>` : '';
-                        msg = `<div>${title}${feed}</div>${link}${tags ? `<div class="mt-0.5">${tags}</div>` : ''}${gpu ? `<div class="mt-0.5">${gpu}</div>` : ''}`;
+                        msg = `<div>${sourceBadge}${title}${feed}</div>${link}${tags ? `<div class="mt-0.5">${tags}</div>` : ''}${gpu ? `<div class="mt-0.5">${gpu}</div>` : ''}`;
                     } else {
                         msg = d.file ?? d.error ?? d.event ?? JSON.stringify(d);
                     }
