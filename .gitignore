@@ -4,7 +4,10 @@
 node_modules/
 bun.lockb
 
+# Gofer
 watch_folder
+archive
+inbox
 
 # Environment / Secrets
 # (Never commit your actual API keys!)
@@ -16,7 +19,7 @@ watch_folder
 .docker/
 # If you decide to store persistent DB data in a local folder
 data/
-db/
+
 
 # OS / IDE
 .DS_Store

@@ -7,6 +7,7 @@
  */
 
 import { logEvent } from "../db/db";
+import { collectGpu } from "./sysmetrics";
 
 const LUMIN_API_URL = process.env.LUMIN_API_URL ?? "https://d11.me/api";
 const LUMIN_API_TOKEN = process.env.LUMIN_API_TOKEN ?? "";
@@ -70,10 +71,18 @@ async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult 
         // Reset fail count on success
         failCounts.delete(item.id);
 
+        // Capture GPU state immediately after inference while it's still warm
+        const gpu = collectGpu();
+
         logEvent("rss_enrichment", "success", {
             item_id: item.id,
             feed_name: item.feed_name,
-            ai_tags
+            title: item.title,
+            url: item.url,
+            ai_tags,
+            gpu_load: gpu?.utilization ?? null,
+            gpu_vram_mib: gpu ? `${gpu.memUsed}/${gpu.memTotal}` : null,
+            gpu_temp_c: gpu?.temperature ?? null
         });
 
         return { id: item.id, ai_tags, ai_summary };
@@ -86,11 +95,11 @@ async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult 
         if (fails >= FAIL_THRESHOLD) {
             failCounts.delete(item.id);
             console.warn(`[Enrichment] Item ${item.id} hit fail threshold — marking as ai:error`);
-            logEvent("rss_enrichment", "sentinel", { item_id: item.id, feed_name: item.feed_name });
+            logEvent("rss_enrichment", "sentinel", { item_id: item.id, feed_name: item.feed_name, title: item.title, url: item.url });
             return { id: item.id, ai_tags: ["ai:error"] };
         }
 
-        logEvent("rss_enrichment", "error", { item_id: item.id, feed_name: item.feed_name, error: String(err) });
+        logEvent("rss_enrichment", "error", { item_id: item.id, feed_name: item.feed_name, title: item.title, url: item.url, error: String(err) });
         return null;
     }
 }

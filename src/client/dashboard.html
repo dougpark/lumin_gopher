@@ -215,6 +215,29 @@
             <div class="relative h-60">
                 <canvas id="timeseries-chart"></canvas>
             </div>
+
+            <!-- Drill-down panel: shown when a bar is clicked -->
+            <div id="drilldown-panel" class="hidden mt-5 border-t border-gemini-border pt-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 id="drilldown-title" class="text-sm font-semibold text-gemini-text"></h3>
+                    <button onclick="closeDrilldown()"
+                        class="text-xl leading-none text-gemini-muted hover:text-gemini-text transition-colors">&times;</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead>
+                            <tr class="border-b border-gemini-border text-gemini-muted text-xs uppercase tracking-wide">
+                                <th class="pb-2 pr-4 font-medium">Time</th>
+                                <th class="pb-2 pr-4 font-medium">Type</th>
+                                <th class="pb-2 pr-4 font-medium">Status</th>
+                                <th class="pb-2 font-medium">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="drilldown-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </section>
 
         <!-- Recent Errors -->
@@ -242,6 +265,7 @@
 
     <script>
         // ── Chart setup ─────────────────────────────────────────────────────────
+        let bucketMs = [];
         const ctx = document.getElementById('timeseries-chart').getContext('2d');
         const chart = new Chart(ctx, {
             type: 'bar',
@@ -253,6 +277,18 @@
                 scales: {
                     x: { grid: { display: false }, ticks: { color: '#5F6368', font: { size: 11 }, maxTicksLimit: 12 } },
                     y: { beginAtZero: true, grid: { color: '#E3E3E3' }, ticks: { color: '#5F6368', precision: 0 } }
+                },
+                onHover: (event, elements) => {
+                    event.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+                },
+                onClick: (event, elements) => {
+                    if (!elements.length) return;
+                    const idx = elements[0].index;
+                    openDrilldown(bucketMs[idx]);
+                    chart.data.datasets[0].backgroundColor = chart.data.labels.map((_, i) =>
+                        i === idx ? '#1a5ccc' : '#4285F4'
+                    );
+                    chart.update();
                 }
             }
         });
@@ -310,10 +346,78 @@
             try {
                 const res = await fetch(`/api/metrics/timeseries?${params}`);
                 const rows = await res.json();
+                bucketMs = rows.map(r => r.bucket);
                 chart.data.labels = rows.map(r => fmtTime(r.bucket));
                 chart.data.datasets[0].data = rows.map(r => r.count);
+                chart.data.datasets[0].backgroundColor = '#4285F4'; // reset highlight
+                document.getElementById('drilldown-panel').classList.add('hidden');
                 chart.update();
             } catch { /* silent */ }
+        }
+
+        // ── Drill-down ───────────────────────────────────────────────────────────
+        async function openDrilldown(ms) {
+            const from = ms;
+            const to = ms + 3600000;
+            const type = document.getElementById('filter-type').value;
+            const status = document.getElementById('filter-status').value;
+            const params = new URLSearchParams({ from, to });
+            if (type) params.set('type', type);
+            if (status) params.set('status', status);
+
+            const panel = document.getElementById('drilldown-panel');
+            const title = document.getElementById('drilldown-title');
+            const tbody = document.getElementById('drilldown-body');
+
+            const start = new Date(from);
+            const end = new Date(to);
+            title.textContent = `Events ${start.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} – ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+            tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gemini-muted">Loading...</td></tr>`;
+            panel.classList.remove('hidden');
+            panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+            try {
+                const res = await fetch(`/api/metrics/events?${params}`);
+                const rows = await res.json();
+                if (rows.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gemini-muted">No events in this hour</td></tr>`;
+                    return;
+                }
+                tbody.innerHTML = rows.map(r => {
+                    const d = r.details ?? {};
+                    let msg;
+                    if (r.type === 'rss_enrichment' && (d.title || d.url)) {
+                        const title = d.title ? `<span class="font-medium text-gemini-text">${d.title}</span>` : '';
+                        const feed = d.feed_name ? `<span class="text-gemini-muted ml-1">[${d.feed_name}]</span>` : '';
+                        const link = d.url ? `<a href="${d.url}" target="_blank" rel="noopener" class="block text-gemini-blue hover:underline truncate max-w-xs">${d.url}</a>` : '';
+                        const tags = d.ai_tags?.length ? `<span class="text-gemini-muted">${d.ai_tags.join(', ')}</span>` : '';
+                        const gpuParts = [];
+                        if (d.gpu_load !== null && d.gpu_load !== undefined) gpuParts.push(`GPU ${d.gpu_load}%`);
+                        if (d.gpu_vram_mib) gpuParts.push(`VRAM ${d.gpu_vram_mib} MiB`);
+                        if (d.gpu_temp_c !== null && d.gpu_temp_c !== undefined) gpuParts.push(`${d.gpu_temp_c}°C`);
+                        const gpu = gpuParts.length ? `<span class="text-xs text-purple-600 font-mono">${gpuParts.join(' · ')}</span>` : '';
+                        msg = `<div>${title}${feed}</div>${link}${tags ? `<div class="mt-0.5">${tags}</div>` : ''}${gpu ? `<div class="mt-0.5">${gpu}</div>` : ''}`;
+                    } else {
+                        msg = d.file ?? d.error ?? d.event ?? JSON.stringify(d);
+                    }
+                    const time = new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    const statusCls = r.status === 'success' ? 'text-green-600' : r.status === 'error' ? 'text-red-500' : 'text-gemini-muted';
+                    return `<tr class="border-b border-gemini-border last:border-0 hover:bg-gemini-surface transition-colors">
+                        <td class="py-2 pr-4 text-gemini-muted whitespace-nowrap font-mono text-xs">${time}</td>
+                        <td class="py-2 pr-4">${typeBadge(r.type)}</td>
+                        <td class="py-2 pr-4 text-xs font-medium ${statusCls}">${r.status}</td>
+                        <td class="py-2 text-gemini-text text-xs break-all">${msg}</td>
+                    </tr>`;
+                }).join('');
+            } catch {
+                tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-red-400">Failed to load events</td></tr>`;
+            }
+        }
+
+        function closeDrilldown() {
+            document.getElementById('drilldown-panel').classList.add('hidden');
+            chart.data.datasets[0].backgroundColor = '#4285F4';
+            chart.update();
         }
 
         // ── Load recent errors ───────────────────────────────────────────────────

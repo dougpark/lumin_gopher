@@ -73,7 +73,7 @@ async function collectDisks(): Promise<DiskInfo[]> {
         }));
 }
 
-function collectGpu(): GpuInfo | null {
+export function collectGpu(): GpuInfo | null {
     try {
         const proc = Bun.spawnSync([
             "nvidia-smi",

@@ -8,7 +8,7 @@ import { watch } from "node:fs"; // Bun supports the standard FS watch API
 import path from "node:path";
 import { enrichRssQueue } from "./workers/enrichment";
 import { tagFileWithOllama } from "./workers/tagger";
-import { logEvent, querySummary, queryTimeseries, queryRecentErrors } from "./db/db";
+import { logEvent, querySummary, queryTimeseries, queryRecentErrors, queryEventsByRange } from "./db/db";
 import { logSystemMetrics, collectSnapshot } from "./workers/sysmetrics";
 
 /**
@@ -17,39 +17,44 @@ import { logSystemMetrics, collectSnapshot } from "./workers/sysmetrics";
 
 // This points to the directory where index.ts lives (e.g., /app/src)
 const PROJECT_ROOT = path.join(import.meta.dir, "..");
-const WATCH_PATH = path.join(PROJECT_ROOT, "watch_folder");
+const INBOX_PATH = process.env.INBOX_PATH ?? path.join(PROJECT_ROOT, "inbox");
+const ARCHIVE_PATH = process.env.ARCHIVE_PATH ?? path.join(PROJECT_ROOT, "archive");
 const PORT = parseInt(process.env.PORT ?? "3030", 10);
 const LOCAL_HOST = process.env.LOCAL_HOST ?? "http://localhost";
-console.log(`[System] Gopher is watching: ${WATCH_PATH}`);
+console.log(`[System] Gopher is watching: ${INBOX_PATH}`);
 
-// Ensure the directory exists so the watcher doesn't crash on startup
+// Ensure the directory exists  so the watcher doesn't crash on startup
 import { mkdirSync, existsSync } from "node:fs";
-if (!existsSync(WATCH_PATH)) {
-    mkdirSync(WATCH_PATH);
-    console.log(`[System] Created watcher directory: ${WATCH_PATH}`);
+if (!existsSync(INBOX_PATH)) {
+    mkdirSync(INBOX_PATH, { recursive: true });
+    console.log(`[System] Created inbox directory: ${INBOX_PATH}`);
+}
+if (!existsSync(ARCHIVE_PATH)) {
+    mkdirSync(ARCHIVE_PATH, { recursive: true });
+    console.log(`[System] Created archive directory: ${ARCHIVE_PATH}`);
 }
 
 /**
  * THE WATCHER
  * This uses the kernel's inotify (on Linux) to listen for changes.
  */
-watch(WATCH_PATH, { recursive: true }, (event, filename) => {
+watch(INBOX_PATH, { recursive: true }, (event, filename) => {
     if (filename) {
         const timestamp = new Date().toLocaleTimeString();
 
         // 'rename' usually covers both new files and deletions
         // 'change' covers edits to existing files
         console.log(`[${timestamp}] 📂 File System Event: ${event.toUpperCase()}`);
-        console.log(`[${timestamp}] 📄 File: ${WATCH_PATH}/${filename}`);
+        console.log(`[${timestamp}] 📄 File: ${INBOX_PATH}/${filename}`);
 
         if (event === "rename") {
             console.log(`[${timestamp}] ⚡ Gopher Alert: A new artifact has been discovered or moved!`);
-            tagFileWithOllama(WATCH_PATH, filename);
+            tagFileWithOllama(INBOX_PATH, filename);
         }
     }
 });
 
-console.log(`[System] Gopher is now eyes-on: ${WATCH_PATH}`);
+console.log(`[System] Gopher is now eyes-on: ${INBOX_PATH}`);
 
 
 
@@ -98,6 +103,20 @@ const server = Bun.serve({
             return Response.json(rows);
         }
 
+        // Metrics: events for a specific hour (drill-down)
+        if (url.pathname === "/api/metrics/events") {
+            const from = parseInt(url.searchParams.get("from") ?? "0", 10);
+            const to = parseInt(url.searchParams.get("to") ?? "0", 10);
+            if (!from || !to || to <= from) return Response.json({ error: "Invalid range" }, { status: 400 });
+            const type = url.searchParams.get("type") ?? undefined;
+            const status = url.searchParams.get("status") ?? undefined;
+            const rows = queryEventsByRange(from, to, type, status).map(r => ({
+                ...r,
+                details: r.details ? JSON.parse(r.details) : null
+            }));
+            return Response.json(rows);
+        }
+
         // Metrics: latest system snapshot (live collection every request)
         if (url.pathname === "/api/metrics/system") {
             const snap = await collectSnapshot();
@@ -122,7 +141,9 @@ console.log(`🚀 Gopher Dashboard online at ${LOCAL_HOST}:${PORT}`);
 const FORAGE_INTERVAL = 30 * 60 * 1000;
 const SYSMETRICS_INTERVAL = 5 * 60 * 1000;
 
-setInterval(() => { logSystemMetrics().catch(err => console.error(`[SysMetrics] ${err}`)); }, SYSMETRICS_INTERVAL);
+setInterval(() => {
+    logSystemMetrics().catch(err => console.error(`[SysMetrics] ${err}`));
+}, SYSMETRICS_INTERVAL);
 
 setInterval(async () => {
     const timestamp = new Date().toLocaleTimeString();
@@ -131,13 +152,11 @@ setInterval(async () => {
     console.log(`[${timestamp}] ✅ Enrichment cycle complete.`);
 }, FORAGE_INTERVAL);
 
-// 3. The "Hello World" Startup log
 // Run enrichment immediately on startup to drain any backlog
 enrichRssQueue().catch(err => console.error(`[Enrichment] Startup run failed: ${err}`));
 logSystemMetrics().catch(err => console.error(`[SysMetrics] Startup run failed: ${err}`));
 logEvent("system", "info", { event: "startup", model: process.env.OLLAMA_MODEL ?? "gemma4:e4b" });
 
 console.log("--------------------------------------------------");
-console.log("Hello, Doug. The Gopher is now watching the lab.");
-console.log("Systems: Web Server [OK] | Interval Timer [OK] | Enrichment [OK]");
+console.log("Hello! The Gopher is now watching the lab.");
 console.log("--------------------------------------------------");
