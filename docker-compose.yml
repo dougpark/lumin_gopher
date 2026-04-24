@@ -9,6 +9,8 @@ services:
       - .:/app  # Bind mount — keeps node_modules and SQLite on host for backups
       - ./data:/app/data  # SQLite database — persists across container rebuilds
       - /mnt/world:/mnt/world:ro  # Read-only mount for disk usage metrics
+      - /mnt/world/Production/lumin/gopher/inbox:/mnt/gopher/inbox
+      - /mnt/world/Production/lumin/gopher/archive:/mnt/gopher/archive
     working_dir: /app
     env_file:
       - .env
