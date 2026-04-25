@@ -1,0 +1,30 @@
+<script>
+    // 1. Register the Service Worker (required for PWA)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+    }
+
+    // 2. The "Drop on Dock" listener
+    if ('launchQueue' in window) {
+        window.launchQueue.setConsumer(async (launchParams) => {
+            // If no files, it was just a regular click launch
+            if (!launchParams.files.length) return;
+
+            for (const fileHandle of launchParams.files) {
+                const file = await fileHandle.getFile();
+                console.log(`Dropped file: ${file.name}`);
+
+                // Vibe Mode: Upload straight to your Cloudflare Worker
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const res = await fetch('/api/share', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (res.ok) alert(`Sent ${file.name} to the family!`);
+            }
+        });
+    }
+</script>

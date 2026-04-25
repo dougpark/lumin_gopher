@@ -1,0 +1,24 @@
+{
+  "name": "Lumin Share",
+  "short_name": "Share",
+  "start_url": "/",
+  "display": "standalone",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": {
+        "image/*": [".jpg", ".jpeg", ".png"],
+        "text/*": [".txt", ".md"],
+        "application/pdf": [".pdf"]
+      }
+    }
+  ],
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  }
+}
+
