@@ -8,6 +8,9 @@ import si from "systeminformation";
 import { logEvent } from "../db/db";
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST ?? "http://host.docker.internal:11434";
+const HA_URL = process.env.HA_URL ?? "";
+const HA_TOKEN = process.env.HA_TOKEN ?? "";
+const HA_POWER_ENTITY = process.env.HA_POWER_ENTITY ?? "sensor.aistation_3rsp02028bz_power";
 
 export interface DiskInfo {
     mount: string;
@@ -40,6 +43,7 @@ export interface SystemSnapshot {
     disks: DiskInfo[];
     gpu: GpuInfo | null;
     ollama: OllamaModel[];
+    station_watts: number | null;
 }
 
 let lastSnapshot: SystemSnapshot | null = null;
@@ -71,6 +75,22 @@ async function collectDisks(): Promise<DiskInfo[]> {
             size: d.size,
             use: parseFloat(d.use.toFixed(1))
         }));
+}
+
+export async function collectStationPower(): Promise<number | null> {
+    if (!HA_URL || !HA_TOKEN) return null;
+    try {
+        const res = await fetch(`${HA_URL}/api/states/${HA_POWER_ENTITY}`, {
+            headers: { "Authorization": `Bearer ${HA_TOKEN}`, "Content-Type": "application/json" },
+            signal: AbortSignal.timeout(5000)
+        });
+        if (!res.ok) return null;
+        const data = await res.json() as { state: string };
+        const watts = parseFloat(data.state);
+        return isNaN(watts) ? null : watts;
+    } catch {
+        return null;
+    }
 }
 
 export function collectGpu(): GpuInfo | null {
@@ -111,14 +131,15 @@ async function collectOllama(): Promise<OllamaModel[]> {
 
 /** Collect a fresh snapshot without logging to SQLite. */
 export async function collectSnapshot(): Promise<SystemSnapshot> {
-    const [cpu, ram, disks, ollama] = await Promise.all([
+    const [cpu, ram, disks, ollama, station_watts] = await Promise.all([
         collectCpu(),
         collectRam(),
         collectDisks(),
-        collectOllama()
+        collectOllama(),
+        collectStationPower()
     ]);
     const gpu = collectGpu();
-    return { collectedAt: Date.now(), cpu, ram, disks, gpu, ollama };
+    return { collectedAt: Date.now(), cpu, ram, disks, gpu, ollama, station_watts };
 }
 
 export async function logSystemMetrics(): Promise<void> {
@@ -131,7 +152,8 @@ export async function logSystemMetrics(): Promise<void> {
             ram_use: ram.use,
             gpu_load: gpu?.utilization ?? null,
             gpu_vram_use: gpu?.memUse ?? null,
-            ollama_models: ollama.map(m => m.name)
+            ollama_models: ollama.map(m => m.name),
+            station_watts: snapshot.station_watts
         });
     } catch (err) {
         logEvent("system_metrics", "error", { error: String(err) });
