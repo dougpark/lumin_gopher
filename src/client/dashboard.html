@@ -75,7 +75,7 @@
         </section>
 
         <!-- Volume Breakdown -->
-        <section class="grid grid-cols-3 gap-4">
+        <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div class="bg-white rounded-gemini-lg p-5 shadow-sm border border-gemini-border text-center">
                 <p class="text-xs text-gemini-muted uppercase tracking-wide mb-1">Last 24h</p>
                 <p id="stat-24h" class="text-2xl font-semibold text-gemini-text">—</p>
@@ -87,6 +87,12 @@
             <div class="bg-white rounded-gemini-lg p-5 shadow-sm border border-gemini-border text-center">
                 <p class="text-xs text-gemini-muted uppercase tracking-wide mb-1">Last 4 weeks</p>
                 <p id="stat-4w" class="text-2xl font-semibold text-gemini-text">—</p>
+            </div>
+            <div class="bg-white rounded-gemini-lg p-5 shadow-sm border border-gemini-border text-center">
+                <p class="text-xs text-gemini-muted uppercase tracking-wide mb-1">Queue Pending</p>
+                <p id="stat-pending" class="text-2xl font-semibold text-gemini-text">—</p>
+                <p id="stat-pending-detail" class="text-xs text-gemini-muted mt-1"></p>
+                <p id="stat-pending-age" class="text-xs text-gemini-muted mt-0.5"></p>
             </div>
         </section>
 
@@ -326,6 +332,21 @@
                 document.getElementById('stat-7d').textContent = d.last_7d.toLocaleString();
                 document.getElementById('stat-4w').textContent = d.last_4w.toLocaleString();
                 document.getElementById('stat-uptime').textContent = fmtUptime(d.uptime_seconds);
+                // Queue pending
+                const pending = d.total_pending;
+                const pendingEl = document.getElementById('stat-pending');
+                pendingEl.textContent = pending !== null ? pending.toLocaleString() : '—';
+                pendingEl.className = 'text-2xl font-semibold ' + (pending > 100 ? 'text-amber-500' : pending > 0 ? 'text-gemini-text' : 'text-green-500');
+                if (d.rss_pending !== null || d.bookmarks_pending !== null) {
+                    const parts = [];
+                    if (d.rss_pending !== null) parts.push(`RSS ${d.rss_pending}`);
+                    if (d.bookmarks_pending !== null) parts.push(`BK ${d.bookmarks_pending}`);
+                    document.getElementById('stat-pending-detail').textContent = parts.join(' · ');
+                }
+                if (d.last_cycle_at) {
+                    const mins = Math.round((Date.now() - d.last_cycle_at) / 60000);
+                    document.getElementById('stat-pending-age').textContent = `checked ${mins}m ago`;
+                }
                 const workload = d.success + d.error + d.sentinel;
                 const rate = workload > 0 ? ((d.success / workload) * 100).toFixed(1) + '%' : '—';
                 document.getElementById('stat-rate').textContent = rate;

@@ -199,6 +199,7 @@ export async function enrichQueue(): Promise<void> {
         logEvent("enrichment_cycle", "info", {
             items_fetched: data.count,
             items_patched: results.length,
+            total_pending: data.total_pending ?? null,
             source_breakdown: data.source_breakdown ?? null
         });
 

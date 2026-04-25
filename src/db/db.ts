@@ -74,6 +74,23 @@ export function queryRecentErrors(limit: number): EventRow[] {
     ).all("error", limit);
 }
 
+export function queryQueueStatus(): { total_pending: number | null; rss_pending: number | null; bookmarks_pending: number | null; last_cycle_at: number | null } {
+    const row = db.query<{ timestamp: number; details: string | null }, []>(
+        `SELECT timestamp, details FROM events
+         WHERE type = 'enrichment_cycle' AND status = 'info'
+         ORDER BY timestamp DESC LIMIT 1`
+    ).get();
+    if (!row) return { total_pending: null, rss_pending: null, bookmarks_pending: null, last_cycle_at: null };
+    const d = row.details ? JSON.parse(row.details) as Record<string, unknown> : {};
+    const breakdown = d.source_breakdown as { rss?: number; bookmarks?: number } | null ?? null;
+    return {
+        total_pending: typeof d.total_pending === "number" ? d.total_pending : null,
+        rss_pending: breakdown?.rss ?? null,
+        bookmarks_pending: breakdown?.bookmarks ?? null,
+        last_cycle_at: row.timestamp
+    };
+}
+
 export function queryEventsByRange(fromMs: number, toMs: number, type?: string, status?: string): EventRow[] {
     let sql = `SELECT id, timestamp, type, status, details
                FROM events

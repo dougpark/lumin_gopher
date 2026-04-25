@@ -8,7 +8,7 @@ import { watch } from "node:fs"; // Bun supports the standard FS watch API
 import path from "node:path";
 import { enrichQueue } from "./workers/enrichment";
 import { tagFileWithOllama } from "./workers/tagger";
-import { logEvent, querySummary, queryTimeseries, queryRecentErrors, queryEventsByRange } from "./db/db";
+import { logEvent, querySummary, queryTimeseries, queryRecentErrors, queryEventsByRange, queryQueueStatus } from "./db/db";
 import { logSystemMetrics, collectSnapshot } from "./workers/sysmetrics";
 
 /**
@@ -81,7 +81,8 @@ const server = Bun.serve({
         // Metrics: summary counts
         if (url.pathname === "/api/metrics/summary") {
             const summary = querySummary();
-            return Response.json({ ...summary, uptime_seconds: Math.floor(process.uptime()) });
+            const queue = queryQueueStatus();
+            return Response.json({ ...summary, ...queue, uptime_seconds: Math.floor(process.uptime()) });
         }
 
         // Metrics: timeseries (1-hour buckets)
