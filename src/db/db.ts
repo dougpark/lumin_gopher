@@ -65,13 +65,13 @@ export interface EventRow {
 }
 
 export function queryRecentErrors(limit: number): EventRow[] {
-    return db.query<EventRow, [string, number]>(
+    return db.query<EventRow, [number]>(
         `SELECT id, timestamp, type, status, details
          FROM events
          WHERE status = 'error'
          ORDER BY timestamp DESC
          LIMIT ?`
-    ).all("error", limit);
+    ).all(limit);
 }
 
 export function queryQueueStatus(): { total_pending: number | null; rss_pending: number | null; bookmarks_pending: number | null; last_cycle_at: number | null } {

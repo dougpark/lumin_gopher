@@ -12,8 +12,7 @@ import { collectGpu } from "./sysmetrics";
 const LUMIN_API_URL = process.env.LUMIN_API_URL ?? "https://d11.me/api";
 const LUMIN_API_TOKEN = process.env.LUMIN_API_TOKEN ?? "";
 const OLLAMA_HOST = process.env.OLLAMA_HOST ?? "http://host.docker.internal:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "gemma4:e4b";
-
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "gemma4:e4b"; const RSS_MAX_AGE_MS = parseInt(process.env.RSS_MAX_AGE_DAYS ?? "7", 10) * 86_400_000;
 const FAIL_THRESHOLD = 3;
 // Key is composite "source:id" to prevent collision between rss id 42 and bookmark id 42
 const failCounts = new Map<string, number>();
@@ -191,11 +190,34 @@ export async function enrichQueue(): Promise<void> {
         console.log(`[Enrichment] Processing ${data.count} item(s) — RSS: ${data.source_breakdown?.rss ?? 0}, Bookmarks: ${data.source_breakdown?.bookmarks ?? 0} total pending.`);
 
         const results: EnrichmentResult[] = [];
+        let staleCount = 0;
         for (const item of data.items) {
+            // Skip old RSS items — bookmarks are user-saved and have no expiry
+            if (item.source === "rss" && RSS_MAX_AGE_MS > 0) {
+                const ageMs = Date.now() - new Date(item.created_at).getTime();
+                if (ageMs > RSS_MAX_AGE_MS) {
+                    console.log(`[Enrichment] Skipping stale RSS item ${item.id} (${Math.round(ageMs / 86_400_000)}d old): ${item.title}`);
+                    logEvent("rss_enrichment", "sentinel", {
+                        item_id: item.id,
+                        source: item.source,
+                        feed_name: item.context?.feed_name,
+                        title: item.title,
+                        url: item.url,
+                        reason: "stale",
+                        age_days: Math.round(ageMs / 86_400_000)
+                    });
+                    results.push({ source: item.source, id: item.id, ai_tags: ["ai:stale"] });
+                    staleCount++;
+                    continue;
+                }
+            }
             const result = await processItemWithOllama(item);
             if (result !== null) {
                 results.push(result);
             }
+        }
+        if (staleCount > 0) {
+            console.log(`[Enrichment] Marked ${staleCount} stale RSS item(s) as ai:stale.`);
         }
 
         if (results.length > 0) {
