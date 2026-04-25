@@ -169,6 +169,15 @@
                     <p id="sys-gpu-power" class="text-2xl font-bold text-gemini-text">—</p>
                     <p class="text-xs text-gemini-muted">Watts</p>
                 </div>
+                <!-- Station Power -->
+                <div class="rounded-xl border border-gemini-border p-4 flex flex-col gap-1">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide">Station Power</p>
+                    <p id="sys-station-watts" class="text-2xl font-bold text-gemini-text">—</p>
+                    <p class="text-xs text-gemini-muted">Watts (wall)</p>
+                    <div class="mt-2" style="height:36px;position:relative">
+                        <canvas id="station-power-sparkline"></canvas>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -217,6 +226,10 @@
                         <option value="sentinel">Sentinel</option>
                         <option value="info">Info</option>
                     </select>
+                    <button onclick="openRecentActivity()"
+                        class="text-sm border border-gemini-border rounded-full px-3 py-1.5 text-gemini-text bg-gemini-surface hover:bg-white hover:border-gemini-blue hover:text-gemini-blue transition-colors focus:outline-none focus:ring-2 focus:ring-gemini-blue">
+                        Last 100 Events
+                    </button>
                 </div>
             </div>
             <div class="relative h-60">
@@ -271,6 +284,39 @@
     </main>
 
     <script>
+        // ── Station Power sparkline ──────────────────────────────────────────────
+        const sparklineData = { labels: [], watts: [] };
+        const sparkCtx = document.getElementById('station-power-sparkline').getContext('2d');
+        const sparkChart = new Chart(sparkCtx, {
+            type: 'line',
+            data: {
+                labels: sparklineData.labels,
+                datasets: [{
+                    data: sparklineData.watts, borderColor: '#34A853', borderWidth: 1.5,
+                    pointRadius: 0, fill: true,
+                    backgroundColor: 'rgba(52,168,83,0.12)', tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                animation: false,
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                scales: { x: { display: false }, y: { display: false, beginAtZero: true } }
+            }
+        });
+
+        function updateStationSparkline(watts) {
+            const MAX_POINTS = 48;
+            const label = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            sparklineData.labels.push(label);
+            sparklineData.watts.push(watts);
+            if (sparklineData.labels.length > MAX_POINTS) {
+                sparklineData.labels.shift();
+                sparklineData.watts.shift();
+            }
+            sparkChart.update();
+        }
+
         // ── Chart setup ─────────────────────────────────────────────────────────
         let bucketMs = [];
         const ctx = document.getElementById('timeseries-chart').getContext('2d');
@@ -446,6 +492,64 @@
             chart.update();
         }
 
+        async function openRecentActivity() {
+            const type = document.getElementById('filter-type').value;
+            const status = document.getElementById('filter-status').value;
+            const params = new URLSearchParams({ limit: '100' });
+            if (type) params.set('type', type);
+            if (status) params.set('status', status);
+
+            const panel = document.getElementById('drilldown-panel');
+            const title = document.getElementById('drilldown-title');
+            const tbody = document.getElementById('drilldown-body');
+
+            const filterLabel = [type, status].filter(Boolean).join(' · ') || 'all types';
+            title.textContent = `Last 100 Events — ${filterLabel}`;
+            tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gemini-muted">Loading...</td></tr>`;
+            panel.classList.remove('hidden');
+            panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+            try {
+                const res = await fetch(`/api/metrics/recent-events?${params}`);
+                const rows = await res.json();
+                if (rows.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gemini-muted">No events found</td></tr>`;
+                    return;
+                }
+                tbody.innerHTML = rows.map(r => {
+                    const d = r.details ?? {};
+                    let msg;
+                    if ((r.type === 'rss_enrichment' || r.type === 'bookmark_enrichment') && (d.title || d.url)) {
+                        const sourceBadge = d.source === 'bookmark'
+                            ? `<span class="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700 mr-1">Bookmark</span>`
+                            : `<span class="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 mr-1">RSS</span>`;
+                        const titleText = d.title ? `<span class="font-medium text-gemini-text">${d.title}</span>` : '';
+                        const feed = d.feed_name ? `<span class="text-gemini-muted ml-1">[${d.feed_name}]</span>` : '';
+                        const link = d.url ? `<a href="${d.url}" target="_blank" rel="noopener" class="block text-gemini-blue hover:underline truncate max-w-xs">${d.url}</a>` : '';
+                        const tags = d.ai_tags?.length ? `<span class="text-gemini-muted">${d.ai_tags.join(', ')}</span>` : '';
+                        const gpuParts = [];
+                        if (d.gpu_load !== null && d.gpu_load !== undefined) gpuParts.push(`GPU ${d.gpu_load}%`);
+                        if (d.gpu_vram_mib) gpuParts.push(`VRAM ${d.gpu_vram_mib} MiB`);
+                        if (d.gpu_temp_c !== null && d.gpu_temp_c !== undefined) gpuParts.push(`${d.gpu_temp_c}°C`);
+                        const gpu = gpuParts.length ? `<span class="text-xs text-purple-600 font-mono">${gpuParts.join(' · ')}</span>` : '';
+                        msg = `<div>${sourceBadge}${titleText}${feed}</div>${link}${tags ? `<div class="mt-0.5">${tags}</div>` : ''}${gpu ? `<div class="mt-0.5">${gpu}</div>` : ''}`;
+                    } else {
+                        msg = d.file ?? d.error ?? d.event ?? JSON.stringify(d);
+                    }
+                    const time = new Date(r.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    const statusCls = r.status === 'success' ? 'text-green-600' : r.status === 'error' ? 'text-red-500' : 'text-gemini-muted';
+                    return `<tr class="border-b border-gemini-border last:border-0 hover:bg-gemini-surface transition-colors">
+                        <td class="py-2 pr-4 text-gemini-muted whitespace-nowrap font-mono text-xs">${time}</td>
+                        <td class="py-2 pr-4">${typeBadge(r.type)}</td>
+                        <td class="py-2 pr-4 text-xs font-medium ${statusCls}">${r.status}</td>
+                        <td class="py-2 text-gemini-text text-xs break-all">${msg}</td>
+                    </tr>`;
+                }).join('');
+            } catch {
+                tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-red-400">Failed to load events</td></tr>`;
+            }
+        }
+
         // ── Load recent errors ───────────────────────────────────────────────────
         async function loadErrors() {
             try {
@@ -532,6 +636,15 @@
                     setMetric('sys-gpu-power', d.gpu.powerDraw.toFixed(0), 'text-gemini-text');
                 } else {
                     ['sys-gpu-load', 'sys-gpu-vram', 'sys-gpu-temp', 'sys-gpu-power'].forEach(id => setMetric(id, 'N/A', 'text-gemini-muted'));
+                }
+
+                // Station Power
+                if (d.station_watts !== null && d.station_watts !== undefined) {
+                    const wCls = d.station_watts > 400 ? 'text-red-500' : d.station_watts > 250 ? 'text-amber-500' : 'text-green-500';
+                    setMetric('sys-station-watts', d.station_watts.toFixed(1), wCls);
+                    updateStationSparkline(d.station_watts);
+                } else {
+                    setMetric('sys-station-watts', 'N/A', 'text-gemini-muted');
                 }
 
                 // Ollama models

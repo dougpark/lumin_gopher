@@ -102,6 +102,16 @@ export function queryEventsByRange(fromMs: number, toMs: number, type?: string, 
     return db.query<EventRow, typeof params>(sql).all(...params);
 }
 
+export function queryRecentEvents(limit: number, type?: string, status?: string): EventRow[] {
+    let sql = `SELECT id, timestamp, type, status, details FROM events WHERE 1=1`;
+    const params: (string | number)[] = [];
+    if (type) { sql += ` AND type = ?`; params.push(type); }
+    if (status) { sql += ` AND status = ?`; params.push(status); }
+    sql += ` ORDER BY timestamp DESC LIMIT ?`;
+    params.push(limit);
+    return db.query<EventRow, typeof params>(sql).all(...params);
+}
+
 export function queryTimeseries(sinceMs: number, type?: string, status?: string): { bucket: number; count: number }[] {
     let sql = `
         SELECT (timestamp / 3600000) * 3600000 AS bucket, COUNT(*) AS count

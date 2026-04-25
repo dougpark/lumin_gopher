@@ -8,7 +8,7 @@ import { watch } from "node:fs"; // Bun supports the standard FS watch API
 import path from "node:path";
 import { enrichQueue } from "./workers/enrichment";
 import { tagFileWithOllama } from "./workers/tagger";
-import { logEvent, querySummary, queryTimeseries, queryRecentErrors, queryEventsByRange, queryQueueStatus } from "./db/db";
+import { logEvent, querySummary, queryTimeseries, queryRecentErrors, queryEventsByRange, queryRecentEvents, queryQueueStatus } from "./db/db";
 import { logSystemMetrics, collectSnapshot } from "./workers/sysmetrics";
 
 /**
@@ -112,6 +112,18 @@ const server = Bun.serve({
             const type = url.searchParams.get("type") ?? undefined;
             const status = url.searchParams.get("status") ?? undefined;
             const rows = queryEventsByRange(from, to, type, status).map(r => ({
+                ...r,
+                details: r.details ? JSON.parse(r.details) : null
+            }));
+            return Response.json(rows);
+        }
+
+        // Metrics: recent events (last N, newest first)
+        if (url.pathname === "/api/metrics/recent-events") {
+            const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10), 500);
+            const type = url.searchParams.get("type") ?? undefined;
+            const status = url.searchParams.get("status") ?? undefined;
+            const rows = queryRecentEvents(limit, type, status).map(r => ({
                 ...r,
                 details: r.details ? JSON.parse(r.details) : null
             }));

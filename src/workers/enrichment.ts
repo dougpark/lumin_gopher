@@ -7,7 +7,7 @@
  */
 
 import { logEvent } from "../db/db";
-import { collectGpu } from "./sysmetrics";
+import { collectGpu, collectStationPower } from "./sysmetrics";
 
 const LUMIN_API_URL = process.env.LUMIN_API_URL ?? "https://d11.me/api";
 const LUMIN_API_TOKEN = process.env.LUMIN_API_TOKEN ?? "";
@@ -70,6 +70,7 @@ async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult 
     };
 
     try {
+        const inferenceStart = Date.now();
         const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -98,15 +99,23 @@ async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult 
         // Reset fail count on success
         failCounts.delete(failKey);
 
-        // Capture GPU state immediately after inference while it's still warm
+        // Capture GPU + station power immediately after inference while still warm
+        const inferenceSecs = (Date.now() - inferenceStart) / 1000;
         const gpu = collectGpu();
+        const stationWatts = await collectStationPower();
+        const stationWh = stationWatts !== null
+            ? parseFloat(((stationWatts * inferenceSecs) / 3600).toFixed(4))
+            : null;
 
         logEvent(eventType, "success", {
             ...contextDetails,
             ai_tags,
+            inference_secs: parseFloat(inferenceSecs.toFixed(1)),
             gpu_load: gpu?.utilization ?? null,
             gpu_vram_mib: gpu ? `${gpu.memUsed}/${gpu.memTotal}` : null,
-            gpu_temp_c: gpu?.temperature ?? null
+            gpu_temp_c: gpu?.temperature ?? null,
+            station_watts: stationWatts,
+            station_wh: stationWh
         });
 
         return { source: item.source, id: item.id, ai_tags, ai_summary };
