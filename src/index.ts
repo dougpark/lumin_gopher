@@ -146,15 +146,29 @@ setInterval(() => {
     logSystemMetrics().catch(err => console.error(`[SysMetrics] ${err}`));
 }, SYSMETRICS_INTERVAL);
 
-setInterval(async () => {
+let enrichRunning = false;
+async function runEnrichment(): Promise<void> {
+    if (enrichRunning) {
+        console.log(`[Enrichment] Skipping — previous run still in progress.`);
+        return;
+    }
+    enrichRunning = true;
     const timestamp = new Date().toLocaleTimeString();
     console.log(`[${timestamp}] 🔍 Gopher is heading out to enrich queue...`);
-    await enrichQueue();
-    console.log(`[${timestamp}] ✅ Enrichment cycle complete.`);
+    try {
+        await enrichQueue();
+        console.log(`[${new Date().toLocaleTimeString()}] ✅ Enrichment cycle complete.`);
+    } finally {
+        enrichRunning = false;
+    }
+}
+
+setInterval(() => {
+    runEnrichment().catch(err => console.error(`[Enrichment] ${err}`));
 }, FORAGE_INTERVAL);
 
 // Run enrichment immediately on startup to drain any backlog
-enrichQueue().catch(err => console.error(`[Enrichment] Startup run failed: ${err}`));
+runEnrichment().catch(err => console.error(`[Enrichment] Startup run failed: ${err}`));
 logSystemMetrics().catch(err => console.error(`[SysMetrics] Startup run failed: ${err}`));
 logEvent("system", "info", { event: "startup", model: process.env.OLLAMA_MODEL ?? "gemma4:e4b" });
 

@@ -179,6 +179,12 @@ export async function enrichQueue(): Promise<void> {
 
         if (data.count === 0) {
             console.log(`[Enrichment] Queue empty — nothing to process.`);
+            logEvent("enrichment_cycle", "info", {
+                items_fetched: 0,
+                items_patched: 0,
+                total_pending: 0,
+                source_breakdown: data.source_breakdown ?? null
+            });
             return;
         }
 
@@ -196,10 +202,12 @@ export async function enrichQueue(): Promise<void> {
             await patchResults(results);
         }
 
+        // Adjust pending count by how many were actually patched this batch
+        const adjustedPending = Math.max(0, (data.total_pending ?? 0) - results.length);
         logEvent("enrichment_cycle", "info", {
             items_fetched: data.count,
             items_patched: results.length,
-            total_pending: data.total_pending ?? null,
+            total_pending: adjustedPending,
             source_breakdown: data.source_breakdown ?? null
         });
 
