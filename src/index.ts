@@ -10,6 +10,7 @@ import { enrichQueue } from "./workers/enrichment";
 import { tagFileWithOllama } from "./workers/tagger";
 import { logEvent, querySummary, queryTimeseries, queryRecentErrors, queryEventsByRange, queryRecentEvents, queryQueueStatus } from "./db/db";
 import { logSystemMetrics, collectSnapshot } from "./workers/sysmetrics";
+import { fetchPinboardPopular, todayFileExists } from "./workers/pinboard";
 
 /**
  * LUMIN GOPHER - Folder Watcher Feature
@@ -183,6 +184,34 @@ setInterval(() => {
 runEnrichment().catch(err => console.error(`[Enrichment] Startup run failed: ${err}`));
 logSystemMetrics().catch(err => console.error(`[SysMetrics] Startup run failed: ${err}`));
 logEvent("system", "info", { event: "startup", model: process.env.OLLAMA_MODEL ?? "gemma4:e4b" });
+
+// 3. Pinboard Popular daily scrape (v1)
+const PINBOARD_INTERVAL = 24 * 60 * 60 * 1000; // 24h
+
+let pinboardRunning = false;
+async function runPinboardScrape(): Promise<void> {
+    if (pinboardRunning) {
+        console.log(`[Pinboard] Skipping — previous run still in progress.`);
+        return;
+    }
+    pinboardRunning = true;
+    try {
+        await fetchPinboardPopular();
+    } finally {
+        pinboardRunning = false;
+    }
+}
+
+setInterval(() => {
+    runPinboardScrape().catch(err => console.error(`[Pinboard] ${err}`));
+}, PINBOARD_INTERVAL);
+
+// Run on startup only if today's file doesn't already exist
+if (!todayFileExists()) {
+    runPinboardScrape().catch(err => console.error(`[Pinboard] Startup run failed: ${err}`));
+} else {
+    console.log(`[Pinboard] Today's file already exists — skipping startup scrape.`);
+}
 
 console.log("--------------------------------------------------");
 console.log("Hello! The Gopher is now watching the lab.");

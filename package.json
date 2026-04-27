@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "pinboard": "bun run src/workers/pinboard.ts"
+  },
   "dependencies": {
     "mammoth": "^1.12.0",
     "systeminformation": "^5.31.5",
