@@ -1,9 +1,10 @@
 /**
  * Pinboard Popular Scraper
- * Fetches https://pinboard.in/popular daily and writes a dated JSON file
- * to data/pinboard_popular_YYYY-MM-DD.json.
+ * Fetches https://pinboard.in/popular daily, writes a dated JSON file,
+ * and ingests items into Lumin via the RSS ingest API.
  *
- * V1: scrape + write only. No enrichment, no Lumin feed.
+ * V1: scrape + write JSON
+ * V2: POST items to Lumin RSS ingest endpoint
  */
 
 import { writeFileSync, existsSync } from "node:fs";
@@ -12,6 +13,11 @@ import { logEvent } from "../db/db";
 
 const DATA_DIR = path.join(import.meta.dir, "..", "..", "data");
 const POPULAR_URL = "https://pinboard.in/popular";
+
+const LUMIN_API_URL = process.env.LUMIN_API_URL ?? "";
+const LUMIN_RSS_INGEST_TOKEN = process.env.LUMIN_RSS_INGEST_TOKEN ?? "";
+const INGEST_BATCH_SIZE = 50;
+const INGEST_MAX_RETRIES = 2;
 
 export function todayFilePath(): string {
     const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -127,6 +133,112 @@ export async function fetchPinboardPopular(): Promise<void> {
         count: items.length,
         file: path.basename(outPath),
     });
+
+    // V2: ingest into Lumin
+    if (!LUMIN_RSS_INGEST_TOKEN || !LUMIN_API_URL) {
+        console.log(`[Pinboard] Skipping Lumin ingest — LUMIN_RSS_INGEST_TOKEN or LUMIN_API_URL not set.`);
+        return;
+    }
+    await ingestToLumin(items);
+}
+
+// ── Lumin RSS Ingest ─────────────────────────────────────────────────────────
+
+interface LuminIngestItem {
+    url: string;
+    title: string;
+    summary?: string;
+    published_at: string;
+    guid?: string;
+}
+
+interface LuminIngestEnvelope {
+    source: string;
+    scraped_at: string;
+    items: LuminIngestItem[];
+}
+
+async function postBatch(envelope: LuminIngestEnvelope): Promise<void> {
+    const endpoint = `${LUMIN_API_URL}/v1/rss/posts`;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= INGEST_MAX_RETRIES + 1; attempt++) {
+        try {
+            const res = await fetch(endpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${LUMIN_RSS_INGEST_TOKEN}`,
+                },
+                body: JSON.stringify(envelope),
+                signal: AbortSignal.timeout(15_000),
+            });
+
+            if (!res.ok) {
+                const body = await res.text().catch(() => "");
+                throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
+            }
+
+            return; // success
+        } catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err));
+            if (attempt <= INGEST_MAX_RETRIES) {
+                console.warn(`[Pinboard] Ingest batch attempt ${attempt} failed — retrying. ${lastError.message}`);
+            }
+        }
+    }
+
+    throw lastError;
+}
+
+async function ingestToLumin(items: PopularItem[]): Promise<void> {
+    console.log(`[Pinboard] Ingesting ${items.length} items to Lumin in batches of ${INGEST_BATCH_SIZE}...`);
+
+    const scrapedAt = items[0]?.scraped_at ?? new Date().toISOString();
+
+    const lumItems: LuminIngestItem[] = items.map(item => ({
+        url: item.url,
+        title: item.title,
+        published_at: item.scraped_at,
+        guid: item.url,
+    }));
+
+    const batches: LuminIngestItem[][] = [];
+    for (let i = 0; i < lumItems.length; i += INGEST_BATCH_SIZE) {
+        batches.push(lumItems.slice(i, i + INGEST_BATCH_SIZE));
+    }
+
+    let totalIngested = 0;
+    for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        const envelope: LuminIngestEnvelope = {
+            source: POPULAR_URL,
+            scraped_at: scrapedAt,
+            items: batch,
+        };
+        try {
+            await postBatch(envelope);
+            totalIngested += batch.length;
+            console.log(`[Pinboard] Batch ${i + 1}/${batches.length} sent (${batch.length} items).`);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[Pinboard] Batch ${i + 1}/${batches.length} failed after ${INGEST_MAX_RETRIES + 1} attempts — abandoning. ${msg}`);
+            await logEvent("system", "error", {
+                event: "pinboard_ingest_batch_failed",
+                batch: i + 1,
+                error: msg,
+            });
+        }
+    }
+
+    if (totalIngested > 0) {
+        console.log(`[Pinboard] Lumin ingest complete — ${totalIngested}/${items.length} items sent.`);
+        await logEvent("system", "success", {
+            event: "pinboard_ingest",
+            count: totalIngested,
+            batches: batches.length,
+        });
+    }
 }
 
 // Allow direct execution: bun run src/workers/pinboard.ts
