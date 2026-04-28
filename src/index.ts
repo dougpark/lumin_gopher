@@ -11,6 +11,7 @@ import { tagFileWithOllama } from "./workers/tagger";
 import { logEvent, querySummary, queryTimeseries, queryRecentErrors, queryEventsByRange, queryRecentEvents, queryQueueStatus } from "./db/db";
 import { logSystemMetrics, collectSnapshot } from "./workers/sysmetrics";
 import { fetchPinboardPopular, todayFileExists } from "./workers/pinboard";
+import { fetchFeedbinStarred, todayFeedbinFileExists } from "./workers/feedbin";
 
 /**
  * LUMIN GOPHER - Folder Watcher Feature
@@ -211,6 +212,34 @@ if (!todayFileExists()) {
     runPinboardScrape().catch(err => console.error(`[Pinboard] Startup run failed: ${err}`));
 } else {
     console.log(`[Pinboard] Today's file already exists — skipping startup scrape.`);
+}
+
+// 4. Feedbin Starred Entries daily fetch (v1)
+const FEEDBIN_INTERVAL = 24 * 60 * 60 * 1000; // 24h
+
+let feedbinRunning = false;
+async function runFeedbinFetch(): Promise<void> {
+    if (feedbinRunning) {
+        console.log(`[Feedbin] Skipping — previous run still in progress.`);
+        return;
+    }
+    feedbinRunning = true;
+    try {
+        await fetchFeedbinStarred();
+    } finally {
+        feedbinRunning = false;
+    }
+}
+
+setInterval(() => {
+    runFeedbinFetch().catch(err => console.error(`[Feedbin] ${err}`));
+}, FEEDBIN_INTERVAL);
+
+// Run on startup only if today's file doesn't already exist
+if (!todayFeedbinFileExists()) {
+    runFeedbinFetch().catch(err => console.error(`[Feedbin] Startup run failed: ${err}`));
+} else {
+    console.log(`[Feedbin] Today's file already exists — skipping startup fetch.`);
 }
 
 console.log("--------------------------------------------------");

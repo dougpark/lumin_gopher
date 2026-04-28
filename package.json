@@ -1,7 +1,8 @@
 {
   "scripts": {
     "start": "bun run src/index.ts",
-    "pinboard": "bun run src/workers/pinboard.ts"
+    "pinboard": "bun run src/workers/pinboard.ts",
+    "feedbin": "bun run src/workers/feedbin.ts"
   },
   "dependencies": {
     "mammoth": "^1.12.0",
