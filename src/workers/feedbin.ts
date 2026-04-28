@@ -4,7 +4,7 @@
  * to data/feedbin_starred_YYYY-MM-DD.json.
  *
  * V1: fetch + write JSON only.
- * V2: ingest into Lumin bookmark API (waiting on Lumin).
+ * V2: ingest into Lumin bookmark API via shared bookmarks module.
  *
  * Auth: HTTP Basic (FEEDBIN_USER / FEEDBIN_PASSWORD)
  * API docs: https://github.com/feedbin/feedbin-api
@@ -13,6 +13,7 @@
 import { writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { logEvent } from "../db/db";
+import { ingestBookmarks } from "./bookmarks";
 
 const DATA_DIR = path.join(import.meta.dir, "..", "..", "data");
 const FEEDBIN_API = "https://api.feedbin.com/v2";
@@ -159,6 +160,18 @@ export async function fetchFeedbinStarred(): Promise<void> {
         count: allEntries.length,
         file: path.basename(outPath),
     });
+
+    // V2: ingest into Lumin as bookmarks
+    await ingestBookmarks(
+        allEntries.map(e => ({
+            url: e.url,
+            title: e.title ?? e.url,
+            short_description: e.summary ?? undefined,
+            tag_list: ["feedbin"],
+            is_public: true,
+        })),
+        "feedbin"
+    );
 }
 
 // Allow direct execution: bun run src/workers/feedbin.ts
