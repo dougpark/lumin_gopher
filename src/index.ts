@@ -1,8 +1,7 @@
 /**
  * LUMIN GOPHER - Core Service v1.0
- * The quiet worker bridging the home lab to the master Lumin index.
- * 
-*/
+ * The quiet worker bridging the home lab to the master index.
+ */
 
 import Bun from "bun";
 import { watch } from "node:fs"; // Bun supports the standard FS watch API
@@ -72,56 +71,7 @@ const server = Bun.serve({
         const url = new URL(req.url);
 
         // Health endpoint (used by Docker healthcheck)
-        // Metrics: recent events (last N, newest first)
-        if (url.pathname === "/api/metrics/recent-events") {
-            const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10), 500);
-            const type = url.searchParams.get("type") ?? undefined;
-            const status = url.searchParams.get("status") ?? undefined;
-            const rows = queryRecentEvents(limit, type, status).map(r => ({
-                ...r,
-                details: r.details ? JSON.parse(r.details) : null
-            }));
-            return Response.json(rows);
-        }
-
-        // Metrics: scheduled tasks status
-        if (url.pathname === "/api/schedule") {
-            const tasks = [
-                {
-                    name: "System Metrics",
-                    interval: `${SYSMETRICS_INTERVAL / 60000} minutes`,
-                    nextRun: new Date(Date.now() + SYSMETRICS_INTERVAL).toLocaleTimeString(),
-                    status: "active"
-                },
-                {
-                    name: "Enrichment Cycle",
-                    interval: `${FORAGE_INTERVAL / 60000} minutes`,
-                    nextRun: new Date(Date.now() + FORAGE_INTERVAL).toLocaleTimeString(),
-                    status: "active"
-                },
-                {
-                    name: "Pinboard Popular",
-                    interval: `${PINBOARD_INTERVAL / (24 * 60 * 60 * 1000)} days`,
-                    nextRun: new Date(Date.now() + PINBOARD_INTERVAL).toLocaleTimeString(),
-                    status: "active"
-                },
-                {
-                    name: "Feedbin Starred",
-                    interval: `${FEEDBIN_INTERVAL / 60000} minutes`,
-                    nextRun: new Date(Date.now() + FEEDBIN_INTERVAL).toLocaleTimeString(),
-                    status: "active"
-                },
-                {
-                    name: "Full Text Fetch",
-                    interval: `${FULLTEXT_INTERVAL / (24 * 60 * 60 * 1000)} days`,
-                    nextRun: new Date(Date.now() + FULLTEXT_INTERVAL).toLocaleTimeString(),
-                    status: "active"
-                }
-            ];
-            return Response.json(tasks);
-        }
-
-        // Metrics: latest system snapshot (live collection every request)
+        if (url.pathname === "/stats") {
             return Response.json({
                 status: "online",
                 agent: "Lumin Gopher",
@@ -202,16 +152,8 @@ const server = Bun.serve({
 
 console.log(`🚀 Gopher Dashboard online at ${LOCAL_HOST}:${PORT}`);
 
-/*
-* Gopher Scheduler
-*
-* System Metrics logging every 5 minutes, 
-* Enrichment cycle every 30 minutes, 
-* Pinboard scrape every 24h, 
-* Feedbin fetch every 30 minutes, 
-* Full Text Fetch every 24h
-*/
-
+// 2. The "Nerd Radar" Timer (The "Chrono-Task")
+// Runs every 30 minutes (1,800,000 ms)
 const FORAGE_INTERVAL = 30 * 60 * 1000;
 const SYSMETRICS_INTERVAL = 5 * 60 * 1000;
 
