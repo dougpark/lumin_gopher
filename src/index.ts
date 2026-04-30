@@ -12,6 +12,7 @@ import { logEvent, querySummary, queryTimeseries, queryRecentErrors, queryEvents
 import { logSystemMetrics, collectSnapshot } from "./workers/sysmetrics";
 import { fetchPinboardPopular, todayFileExists } from "./workers/pinboard";
 import { fetchFeedbinStarred } from "./workers/feedbin";
+import { runFullTextFetch } from "./workers/fulltext";
 
 /**
  * LUMIN GOPHER - Folder Watcher Feature
@@ -237,6 +238,30 @@ setInterval(() => {
 
 // Always run on startup to pick up any new starred items immediately
 runFeedbinFetch().catch(err => console.error(`[Feedbin] Startup run failed: ${err}`));
+
+// 5. Full Text Fetch — drains Lumin queue every 24h
+const FULLTEXT_INTERVAL = 24 * 60 * 60 * 1000; // 24h
+
+let fulltextRunning = false;
+async function runFullTextCycle(): Promise<void> {
+    if (fulltextRunning) {
+        console.log(`[FullText] Skipping — previous cycle still running.`);
+        return;
+    }
+    fulltextRunning = true;
+    try {
+        await runFullTextFetch();
+    } finally {
+        fulltextRunning = false;
+    }
+}
+
+setInterval(() => {
+    runFullTextCycle().catch(err => console.error(`[FullText] ${err}`));
+}, FULLTEXT_INTERVAL);
+
+// Run immediately on startup
+runFullTextCycle().catch(err => console.error(`[FullText] Startup run failed: ${err}`));
 
 console.log("--------------------------------------------------");
 console.log("Hello! The Gopher is now watching the lab.");

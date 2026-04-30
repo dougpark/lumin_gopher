@@ -15,7 +15,8 @@ export type EventType =
     | "enrichment_cycle"
     | "api_error"
     | "system"
-    | "system_metrics";
+    | "system_metrics"
+    | "full_text";
 
 export type EventStatus = "success" | "error" | "sentinel" | "info";
 

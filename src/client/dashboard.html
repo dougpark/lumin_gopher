@@ -217,6 +217,7 @@
                         <option value="enrichment_cycle">Enrichment Cycle</option>
                         <option value="api_error">API Error</option>
                         <option value="system">System</option>
+                        <option value="full_text">Full Text</option>
                     </select>
                     <select id="filter-status"
                         class="text-sm border border-gemini-border rounded-full px-3 py-1.5 text-gemini-text bg-gemini-surface focus:outline-none focus:ring-2 focus:ring-gemini-blue">
@@ -362,6 +363,7 @@
                 enrichment_cycle: 'bg-teal-100 text-teal-700',
                 api_error: 'bg-red-100 text-red-700',
                 system: 'bg-gray-100 text-gray-600',
+                full_text: 'bg-amber-100 text-amber-700',
             };
             const cls = colors[type] ?? 'bg-gray-100 text-gray-600';
             return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${cls}">${type.replace(/_/g, ' ')}</span>`;
@@ -469,6 +471,14 @@
                         if (d.gpu_temp_c !== null && d.gpu_temp_c !== undefined) gpuParts.push(`${d.gpu_temp_c}°C`);
                         const gpu = gpuParts.length ? `<span class="text-xs text-purple-600 font-mono">${gpuParts.join(' · ')}</span>` : '';
                         msg = `<div>${sourceBadge}${title}${feed}</div>${link}${tags ? `<div class="mt-0.5">${tags}</div>` : ''}${gpu ? `<div class="mt-0.5">${gpu}</div>` : ''}`;
+                    } else if (r.type === 'full_text') {
+                        if (d.event === 'fulltext_batch') {
+                            msg = `Batch ${d.batch}: <span class="text-green-600">${d.completed} completed</span>, <span class="text-red-500">${d.failed} failed</span> → ${d.updated} written <span class="text-gemini-muted">(${d.total_pending} pending)</span>`;
+                        } else if (d.event === 'fulltext_cycle_complete') {
+                            msg = `Cycle done in ${d.elapsed_secs}s — ${d.processed} processed, <span class="text-green-600">${d.completed} completed</span>, <span class="text-red-500">${d.failed} failed</span>`;
+                        } else {
+                            msg = d.error ? `<span class="text-red-500">${d.event}: ${d.error}</span>` : d.event ?? JSON.stringify(d);
+                        }
                     } else {
                         msg = d.file ?? d.error ?? d.event ?? JSON.stringify(d);
                     }
@@ -533,6 +543,14 @@
                         if (d.gpu_temp_c !== null && d.gpu_temp_c !== undefined) gpuParts.push(`${d.gpu_temp_c}°C`);
                         const gpu = gpuParts.length ? `<span class="text-xs text-purple-600 font-mono">${gpuParts.join(' · ')}</span>` : '';
                         msg = `<div>${sourceBadge}${titleText}${feed}</div>${link}${tags ? `<div class="mt-0.5">${tags}</div>` : ''}${gpu ? `<div class="mt-0.5">${gpu}</div>` : ''}`;
+                    } else if (r.type === 'full_text') {
+                        if (d.event === 'fulltext_batch') {
+                            msg = `Batch ${d.batch}: <span class="text-green-600">${d.completed} completed</span>, <span class="text-red-500">${d.failed} failed</span> → ${d.updated} written <span class="text-gemini-muted">(${d.total_pending} pending)</span>`;
+                        } else if (d.event === 'fulltext_cycle_complete') {
+                            msg = `Cycle done in ${d.elapsed_secs}s — ${d.processed} processed, <span class="text-green-600">${d.completed} completed</span>, <span class="text-red-500">${d.failed} failed</span>`;
+                        } else {
+                            msg = d.error ? `<span class="text-red-500">${d.event}: ${d.error}</span>` : d.event ?? JSON.stringify(d);
+                        }
                     } else {
                         msg = d.file ?? d.error ?? d.event ?? JSON.stringify(d);
                     }
