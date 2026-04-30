@@ -152,15 +152,28 @@ const server = Bun.serve({
 
 console.log(`🚀 Gopher Dashboard online at ${LOCAL_HOST}:${PORT}`);
 
-// 2. The "Nerd Radar" Timer (The "Chrono-Task")
-// Runs every 30 minutes (1,800,000 ms)
-const FORAGE_INTERVAL = 30 * 60 * 1000;
-const SYSMETRICS_INTERVAL = 5 * 60 * 1000;
 
+/**
+ *  
+ * Schedulers and Background Tasks
+ * System Metrics - ever 5 minutes
+ * AI Enrichment Cycle - every 30 minutes
+ * Pinboard Popular Scrape - every 24h
+ * Feedbin Starred Entries - every 30 minutes
+ * Full Text Fetch - every 1h
+ * 
+ **/
+
+
+
+// System Metrics - every 5 minutes
+const SYSMETRICS_INTERVAL = 5 * 60 * 1000;
 setInterval(() => {
     logSystemMetrics().catch(err => console.error(`[SysMetrics] ${err}`));
 }, SYSMETRICS_INTERVAL);
 
+// AI Enrichment Cycle - every 30 minutes
+const FORAGE_INTERVAL = 30 * 60 * 1000;
 let enrichRunning = false;
 async function runEnrichment(): Promise<void> {
     if (enrichRunning) {
@@ -187,7 +200,8 @@ runEnrichment().catch(err => console.error(`[Enrichment] Startup run failed: ${e
 logSystemMetrics().catch(err => console.error(`[SysMetrics] Startup run failed: ${err}`));
 logEvent("system", "info", { event: "startup", model: process.env.OLLAMA_MODEL ?? "gemma4:e4b" });
 
-// 3. Pinboard Popular daily scrape (v1)
+
+// Pinboard Popular daily scrape (v1)
 const PINBOARD_INTERVAL = 24 * 60 * 60 * 1000; // 24h
 
 let pinboardRunning = false;
@@ -215,7 +229,7 @@ if (!todayFileExists()) {
     console.log(`[Pinboard] Today's file already exists — skipping startup scrape.`);
 }
 
-// 4. Feedbin Starred Entries — every 30 minutes
+// Feedbin Starred Entries — every 30 minutes
 const FEEDBIN_INTERVAL = 30 * 60 * 1000; // 30 min
 
 let feedbinRunning = false;
@@ -239,8 +253,8 @@ setInterval(() => {
 // Always run on startup to pick up any new starred items immediately
 runFeedbinFetch().catch(err => console.error(`[Feedbin] Startup run failed: ${err}`));
 
-// 5. Full Text Fetch — drains Lumin queue every 24h
-const FULLTEXT_INTERVAL = 24 * 60 * 60 * 1000; // 24h
+// Full Text Fetch — drains Lumin queue every 1h
+const FULLTEXT_INTERVAL = 1 * 60 * 60 * 1000; // 1h
 
 let fulltextRunning = false;
 async function runFullTextCycle(): Promise<void> {
@@ -266,3 +280,74 @@ runFullTextCycle().catch(err => console.error(`[FullText] Startup run failed: ${
 console.log("--------------------------------------------------");
 console.log("Hello! The Gopher is now watching the lab.");
 console.log("--------------------------------------------------");
+
+/** 
+ * Goals:
+ * Cron job 30 minutes (completion of each step triggers next step)
+ * -> AI Enrichment
+ * -> Full Text Fetch
+ * -> AI Synthesis
+ * -> Feedbin Starred Entries
+ * 
+ * Cron job every 5 minutes on the 4th minute :04, :09, :14, etc
+ * -> System Metrics
+ * 
+ * Cron job every 24h at 3:17am
+ * -> Pinboard Popular Scrape
+ * -> Day One Import (future)
+ * -> Weather Data Fetch (future)
+ * -> Calendar Events Fetch (future)
+ * 
+ * Ex. Bun.cron
+ * Bun.cron("0,30 * * * *", async () => {
+    await runLuminPipeline();
+    });
+**/
+
+/** future scheduling logic
+ *  not production code
+ * 
+ * 
+ * 
+ // Define your jobs with individual error handling
+async function runLuminPipeline() {
+    console.log(`[${new Date().toLocaleTimeString()}] Starting Pipeline...`);
+
+    // 1. Pull Bookmarks
+    try {
+        await pullLuminBookmarks();
+        console.log("✅ Step 1: Lumin Bookmarks Pulled");
+    } catch (err) {
+        console.error(`❌ Step 1 Failed: ${err.message}`);
+        // Optionally return or continue depending on your logic
+    }
+
+    // 2. Full Text Scrape
+    try {
+        await runTextScraper();
+        console.log("✅ Step 2: Scrape Complete");
+    } catch (err) {
+        console.error(`❌ Step 2 Failed: ${err.message}`);
+        // We continue even if some scrapes failed
+    }
+
+    // 3. AI Synthesis
+    try {
+        await runAISynthesis();
+        console.log("✅ Step 3: Synthesis Complete");
+    } catch (err) {
+        console.error(`❌ Step 3 Failed: ${err.message}`);
+    }
+
+    console.log("--- Pipeline Finished ---");
+}
+
+// Trigger the sequence every 30 minutes
+Bun.cron("0,30 * * * *", async () => {
+    await runLuminPipeline();
+});
+ * 
+ * 
+ * 
+ * 
+ */
