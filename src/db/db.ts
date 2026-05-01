@@ -16,6 +16,8 @@ export type EventType =
     | "api_error"
     | "system"
     | "system_metrics"
+    | "feedbin"
+    | "popular"
     | "full_text";
 
 export type EventStatus = "success" | "error" | "sentinel" | "info";

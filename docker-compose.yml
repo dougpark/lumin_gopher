@@ -1,6 +1,7 @@
 services:
   gopher:
     image: oven/bun:latest
+    container_name: gopher
     restart: unless-stopped
     user: "1000:1000" # Uses your host User ID and Group ID
     ports:

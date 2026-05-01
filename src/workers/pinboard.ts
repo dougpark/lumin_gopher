@@ -103,7 +103,7 @@ export async function fetchPinboardPopular(): Promise<void> {
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[Pinboard] Fetch failed: ${msg}`);
-        await logEvent("system", "error", { event: "pinboard_fetch_failed", error: msg });
+        await logEvent("popular", "error", { event: "pinboard_fetch_failed", error: msg });
         return;
     }
 
@@ -111,7 +111,7 @@ export async function fetchPinboardPopular(): Promise<void> {
 
     if (items.length === 0) {
         console.warn(`[Pinboard] Parsed 0 items — page structure may have changed.`);
-        await logEvent("system", "error", {
+        await logEvent("popular", "error", {
             event: "pinboard_parse_empty",
             note: "Zero items parsed; check HTML structure",
         });
@@ -128,7 +128,7 @@ export async function fetchPinboardPopular(): Promise<void> {
     writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf-8");
     console.log(`[Pinboard] Wrote ${items.length} items → ${outPath}`);
 
-    await logEvent("system", "success", {
+    await logEvent("popular", "success", {
         event: "pinboard_popular_scraped",
         count: items.length,
         file: path.basename(outPath),
@@ -223,7 +223,7 @@ async function ingestToLumin(items: PopularItem[]): Promise<void> {
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             console.error(`[Pinboard] Batch ${i + 1}/${batches.length} failed after ${INGEST_MAX_RETRIES + 1} attempts — abandoning. ${msg}`);
-            await logEvent("system", "error", {
+            await logEvent("popular", "error", {
                 event: "pinboard_ingest_batch_failed",
                 batch: i + 1,
                 error: msg,
@@ -233,7 +233,7 @@ async function ingestToLumin(items: PopularItem[]): Promise<void> {
 
     if (totalIngested > 0) {
         console.log(`[Pinboard] Lumin ingest complete — ${totalIngested}/${items.length} items sent.`);
-        await logEvent("system", "success", {
+        await logEvent("popular", "success", {
             event: "pinboard_ingest",
             count: totalIngested,
             batches: batches.length,

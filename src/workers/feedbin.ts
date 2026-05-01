@@ -101,7 +101,7 @@ export async function fetchFeedbinStarred(): Promise<void> {
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[Feedbin] Failed to fetch starred IDs: ${msg}`);
-        await logEvent("system", "error", { event: "feedbin_starred_ids_failed", error: msg });
+        await logEvent("feedbin", "error", { event: "feedbin_starred_ids_failed", error: msg });
         return;
     }
 
@@ -122,14 +122,14 @@ export async function fetchFeedbinStarred(): Promise<void> {
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             console.error(`[Feedbin] Batch ${i + 1}/${batches.length} failed: ${msg}`);
-            await logEvent("system", "error", { event: "feedbin_entries_batch_failed", batch: i + 1, error: msg });
+            await logEvent("feedbin", "info", { event: "feedbin_entries_batch_failed", batch: i + 1, error: msg });
             // Continue — partial results are still useful
         }
     }
 
     if (allEntries.length === 0) {
         console.warn(`[Feedbin] No entries retrieved.`);
-        await logEvent("system", "error", { event: "feedbin_no_entries", starred_count: starredIds.length });
+        await logEvent("feedbin", "error", { event: "feedbin_no_entries", starred_count: starredIds.length });
         return;
     }
 
@@ -155,7 +155,7 @@ export async function fetchFeedbinStarred(): Promise<void> {
     writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf-8");
     console.log(`[Feedbin] Wrote ${allEntries.length} starred entries → ${outPath}`);
 
-    await logEvent("system", "success", {
+    await logEvent("feedbin", "success", {
         event: "feedbin_starred_fetched",
         count: allEntries.length,
         file: path.basename(outPath),

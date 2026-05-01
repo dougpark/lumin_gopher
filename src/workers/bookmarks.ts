@@ -53,14 +53,28 @@ async function postBatch(items: BookmarkItem[]): Promise<BatchResponse> {
                 return { inserted: 0, skipped_duplicates: items.length, invalid: [] };
             }
 
+
             // Other 4xx = bad payload, not retryable
             if (res.status >= 400 && res.status < 500) {
+                // 1. Capture the body first so we can inspect it
                 const body = await res.text().catch(() => "");
-                throw Object.assign(new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`), { retryable: false });
+
+                // 2. Check for your specific "soft error" message
+                if (body.includes("No valid items in batch")) {
+                    console.log("--- Sync skipped 003: No valid bookmarks to process this cycle ---");
+                    return { inserted: 0, skipped_duplicates: items.length, invalid: [] };
+                } else {
+
+                    // 3. If it's any other 400 error, throw it as usual
+                    throw Object.assign(
+                        new Error(`bookmarks 001 HTTP ${res.status}: ${body.slice(0, 200)}`),
+                        { retryable: false }
+                    );
+                }
             }
 
             if (!res.ok) {
-                throw Object.assign(new Error(`HTTP ${res.status}`), { retryable: true });
+                throw Object.assign(new Error(`bookmarks 002 HTTP ${res.status}`), { retryable: true });
             }
 
             return await res.json() as BatchResponse;

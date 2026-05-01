@@ -135,7 +135,7 @@ export async function runFullTextFetch(): Promise<void> {
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             console.error(`[FullText] Queue fetch failed — aborting cycle. ${msg}`);
-            logEvent("full_text", "error", { event: "fulltext_queue_failed", error: msg });
+            logEvent("full_text", "error", { event: "lumin_fulltext_queue_failed", error: msg });
             return;
         }
 
@@ -162,7 +162,7 @@ export async function runFullTextFetch(): Promise<void> {
                 const patched = await patchResults(results);
                 console.log(`[FullText] Batch ${batchNum}: wrote ${patched.updated} results back.`);
                 logEvent("full_text", "success", {
-                    event: "fulltext_batch",
+                    event: "lumin_fulltext_batch",
                     batch: batchNum,
                     completed,
                     failed,
@@ -172,7 +172,7 @@ export async function runFullTextFetch(): Promise<void> {
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 console.error(`[FullText] Batch ${batchNum} patch failed: ${msg}`);
-                logEvent("full_text", "error", { event: "fulltext_patch_failed", batch: batchNum, error: msg });
+                logEvent("full_text", "error", { event: "lumin_fulltext_patch_failed", batch: batchNum, error: msg });
                 // Don't abort — try next batch
             }
         }
