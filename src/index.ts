@@ -148,7 +148,7 @@ const server = Bun.serve({
 
         return new Response("Not found", { status: 404 });
     },
-});
+}); // end Bun server
 
 console.log(`🚀 Gopher Dashboard online at ${LOCAL_HOST}:${PORT}`);
 

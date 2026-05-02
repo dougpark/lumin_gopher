@@ -8,6 +8,7 @@
 - Runs local Ollama models
 - Running inside a Docker container
 - Uses bun.js (no Node.js) for the backend
+- Use Hono for the backend framework
 - use Tailwind CSS for styling
 - plain HTML/JS for the frontend
 - Uses SQLite for local data storage
