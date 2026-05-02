@@ -6,6 +6,7 @@
     "fulltext": "bun run src/workers/fulltext.ts"
   },
   "dependencies": {
+    "hono": "^4.12.16",
     "mammoth": "^1.12.0",
     "systeminformation": "^5.31.5",
     "unpdf": "^1.6.0"

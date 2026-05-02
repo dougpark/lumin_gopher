@@ -4,6 +4,7 @@
  */
 
 import Bun from "bun";
+import { Hono } from "hono";
 import { watch } from "node:fs"; // Bun supports the standard FS watch API
 import path from "node:path";
 import { enrichQueue } from "./workers/enrichment";
@@ -64,90 +65,88 @@ console.log(`[System] Gopher is now eyes-on: ${INBOX_PATH}`);
 // 1. Start the Management UI (The "Web Server")
 const DASHBOARD_PATH = path.join(import.meta.dir, "client", "dashboard.html");
 
+const app = new Hono();
+
+// Health endpoint (used by Docker healthcheck)
+app.get("/stats", (c) => {
+    return c.json({
+        status: "online",
+        agent: "Lumin Gopher",
+        location: "Fort Worth Linux Box",
+        uptime: `${Math.floor(process.uptime())}s`,
+        nerd_radar_active: true
+    });
+});
+
+// Metrics: summary counts
+app.get("/api/metrics/summary", (c) => {
+    const summary = querySummary();
+    const queue = queryQueueStatus();
+    return c.json({ ...summary, ...queue, uptime_seconds: Math.floor(process.uptime()) });
+});
+
+// Metrics: timeseries (1-hour buckets)
+app.get("/api/metrics/timeseries", (c) => {
+    const hours = Math.min(parseInt(c.req.query("hours") ?? "48", 10), 168);
+    const type = c.req.query("type") ?? undefined;
+    const status = c.req.query("status") ?? undefined;
+    const sinceMs = Date.now() - hours * 60 * 60 * 1000;
+    return c.json(queryTimeseries(sinceMs, type, status));
+});
+
+// Metrics: recent errors
+app.get("/api/metrics/recent-errors", (c) => {
+    const limit = Math.min(parseInt(c.req.query("limit") ?? "20", 10), 100);
+    const rows = queryRecentErrors(limit).map(r => ({
+        ...r,
+        details: r.details ? JSON.parse(r.details) : null
+    }));
+    return c.json(rows);
+});
+
+// Metrics: events for a specific hour (drill-down)
+app.get("/api/metrics/events", (c) => {
+    const from = parseInt(c.req.query("from") ?? "0", 10);
+    const to = parseInt(c.req.query("to") ?? "0", 10);
+    if (!from || !to || to <= from) return c.json({ error: "Invalid range" }, 400);
+    const type = c.req.query("type") ?? undefined;
+    const status = c.req.query("status") ?? undefined;
+    const rows = queryEventsByRange(from, to, type, status).map(r => ({
+        ...r,
+        details: r.details ? JSON.parse(r.details) : null
+    }));
+    return c.json(rows);
+});
+
+// Metrics: recent events (last N, newest first)
+app.get("/api/metrics/recent-events", (c) => {
+    const limit = Math.min(parseInt(c.req.query("limit") ?? "100", 10), 500);
+    const type = c.req.query("type") ?? undefined;
+    const status = c.req.query("status") ?? undefined;
+    const rows = queryRecentEvents(limit, type, status).map(r => ({
+        ...r,
+        details: r.details ? JSON.parse(r.details) : null
+    }));
+    return c.json(rows);
+});
+
+// Metrics: latest system snapshot (live collection every request)
+app.get("/api/metrics/system", async (c) => {
+    const snap = await collectSnapshot();
+    return c.json(snap);
+});
+
+// Main Dashboard
+app.get("/", (c) => {
+    return new Response(Bun.file(DASHBOARD_PATH), {
+        headers: { "Content-Type": "text/html" }
+    });
+});
+
 const server = Bun.serve({
     port: PORT,
     hostname: "0.0.0.0", // <--- CRITICAL for Docker mapping
-    async fetch(req) {
-        const url = new URL(req.url);
-
-        // Health endpoint (used by Docker healthcheck)
-        if (url.pathname === "/stats") {
-            return Response.json({
-                status: "online",
-                agent: "Lumin Gopher",
-                location: "Fort Worth Linux Box",
-                uptime: `${Math.floor(process.uptime())}s`,
-                nerd_radar_active: true
-            });
-        }
-
-        // Metrics: summary counts
-        if (url.pathname === "/api/metrics/summary") {
-            const summary = querySummary();
-            const queue = queryQueueStatus();
-            return Response.json({ ...summary, ...queue, uptime_seconds: Math.floor(process.uptime()) });
-        }
-
-        // Metrics: timeseries (1-hour buckets)
-        if (url.pathname === "/api/metrics/timeseries") {
-            const hours = Math.min(parseInt(url.searchParams.get("hours") ?? "48", 10), 168);
-            const type = url.searchParams.get("type") ?? undefined;
-            const status = url.searchParams.get("status") ?? undefined;
-            const sinceMs = Date.now() - hours * 60 * 60 * 1000;
-            return Response.json(queryTimeseries(sinceMs, type, status));
-        }
-
-        // Metrics: recent errors
-        if (url.pathname === "/api/metrics/recent-errors") {
-            const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20", 10), 100);
-            const rows = queryRecentErrors(limit).map(r => ({
-                ...r,
-                details: r.details ? JSON.parse(r.details) : null
-            }));
-            return Response.json(rows);
-        }
-
-        // Metrics: events for a specific hour (drill-down)
-        if (url.pathname === "/api/metrics/events") {
-            const from = parseInt(url.searchParams.get("from") ?? "0", 10);
-            const to = parseInt(url.searchParams.get("to") ?? "0", 10);
-            if (!from || !to || to <= from) return Response.json({ error: "Invalid range" }, { status: 400 });
-            const type = url.searchParams.get("type") ?? undefined;
-            const status = url.searchParams.get("status") ?? undefined;
-            const rows = queryEventsByRange(from, to, type, status).map(r => ({
-                ...r,
-                details: r.details ? JSON.parse(r.details) : null
-            }));
-            return Response.json(rows);
-        }
-
-        // Metrics: recent events (last N, newest first)
-        if (url.pathname === "/api/metrics/recent-events") {
-            const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10), 500);
-            const type = url.searchParams.get("type") ?? undefined;
-            const status = url.searchParams.get("status") ?? undefined;
-            const rows = queryRecentEvents(limit, type, status).map(r => ({
-                ...r,
-                details: r.details ? JSON.parse(r.details) : null
-            }));
-            return Response.json(rows);
-        }
-
-        // Metrics: latest system snapshot (live collection every request)
-        if (url.pathname === "/api/metrics/system") {
-            const snap = await collectSnapshot();
-            return Response.json(snap);
-        }
-
-        // Main Dashboard
-        if (url.pathname === "/") {
-            return new Response(Bun.file(DASHBOARD_PATH), {
-                headers: { "Content-Type": "text/html" }
-            });
-        }
-
-        return new Response("Not found", { status: 404 });
-    },
+    fetch: app.fetch,
 }); // end Bun server
 
 console.log(`🚀 Gopher Dashboard online at ${LOCAL_HOST}:${PORT}`);
