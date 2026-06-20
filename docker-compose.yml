@@ -13,6 +13,7 @@ services:
       - /mnt/world:/mnt/world:ro  # Read-only mount for disk usage metrics
       - /mnt/world/Production/lumin/gopher/inbox:/mnt/gopher/inbox
       - /mnt/world/Production/lumin/gopher/archive:/mnt/gopher/archive
+      - gopher-email-data:/app/emaildata # External named volume for email data
     working_dir: /app
     env_file:
       - .env
@@ -37,3 +38,8 @@ services:
               count: all
               capabilities: [gpu, utility]
     command: sh -c "bun install && bun run --watch src/index.ts"
+
+volumes:
+  gopher-email-data:
+    external: true
+    name: gopher-email-data

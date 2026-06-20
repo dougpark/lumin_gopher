@@ -53,9 +53,9 @@ async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult 
     const sourceLabel = item.source === "bookmark" ? "bookmark archivist" : "RSS feed archivist";
     const prompt =
         `You are a ${sourceLabel}. Given the article title and description below, ` +
-        `generate exactly 5 relevant lowercase tags and a clean 2-sentence summary. ` +
+        `generate exactly 5 relevant lowercase tags and a clean 5-sentence summary. ` +
         `Respond ONLY with valid JSON using this exact structure: ` +
-        `{"ai_tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], "ai_summary": "First sentence. Second sentence."}\n\n` +
+        `{"ai_tags": ["tag1", "tag2", "tag3", "tag4", "tag5"], "ai_summary": "First sentence. Second sentence. Third sentence. Fourth sentence. Fifth sentence."}\n\n` +
         `Title: ${item.title}\n` +
         `Description: ${item.body || "(none)"}`;
 

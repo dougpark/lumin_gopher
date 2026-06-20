@@ -14,6 +14,7 @@ import { logSystemMetrics, collectSnapshot } from "./workers/sysmetrics";
 import { fetchPinboardPopular, todayFileExists } from "./workers/pinboard";
 import { fetchFeedbinStarred } from "./workers/feedbin";
 import { runFullTextFetch } from "./workers/fulltext";
+import { getEmailStats } from "./workers/emailStats";
 
 /**
  * LUMIN GOPHER - Folder Watcher Feature
@@ -64,6 +65,7 @@ console.log(`[System] Gopher is now eyes-on: ${INBOX_PATH}`);
 
 // 1. Start the Management UI (The "Web Server")
 const DASHBOARD_PATH = path.join(import.meta.dir, "client", "dashboard.html");
+const EMAIL_DASHBOARD_PATH = path.join(import.meta.dir, "client", "email.html");
 
 const app = new Hono();
 
@@ -141,6 +143,24 @@ app.get("/", (c) => {
     return new Response(Bun.file(DASHBOARD_PATH), {
         headers: { "Content-Type": "text/html" }
     });
+});
+
+// Email stats dashboard
+app.get("/email", (c) => {
+    return new Response(Bun.file(EMAIL_DASHBOARD_PATH), {
+        headers: { "Content-Type": "text/html" }
+    });
+});
+
+// Email stats JSON endpoint
+app.get("/email/stats", (c) => {
+    try {
+        const limit = Math.min(parseInt(c.req.query("limit") ?? "20", 10), 100);
+        return c.json(getEmailStats(limit));
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        return c.json({ status: "error", message }, 500);
+    }
 });
 
 const server = Bun.serve({
