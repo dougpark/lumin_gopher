@@ -66,6 +66,7 @@ console.log(`[System] Gopher is now eyes-on: ${INBOX_PATH}`);
 // 1. Start the Management UI (The "Web Server")
 const DASHBOARD_PATH = path.join(import.meta.dir, "client", "dashboard.html");
 const EMAIL_DASHBOARD_PATH = path.join(import.meta.dir, "client", "email.html");
+const SYSTEM_HEALTH_PATH = path.join(import.meta.dir, "client", "system-health.html");
 const SIDEBAR_SCRIPT_PATH = path.join(import.meta.dir, "client", "assets", "sidebar.js");
 const SIDEBAR_NAV_PATH = path.join(import.meta.dir, "client", "assets", "sidebar-nav.json");
 
@@ -150,6 +151,13 @@ app.get("/", (c) => {
 // Email stats dashboard
 app.get("/email", (c) => {
     return new Response(Bun.file(EMAIL_DASHBOARD_PATH), {
+        headers: { "Content-Type": "text/html" }
+    });
+});
+
+// System health dashboard
+app.get("/system-health", (c) => {
+    return new Response(Bun.file(SYSTEM_HEALTH_PATH), {
         headers: { "Content-Type": "text/html" }
     });
 });

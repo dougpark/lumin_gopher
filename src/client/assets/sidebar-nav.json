@@ -79,6 +79,11 @@
           "comingSoon": true
         },
         {
+          "label": "System Health",
+          "href": "/system-health",
+          "icon": "monitor"
+        },
+        {
           "label": "Model Load",
           "href": "/models",
           "icon": "model",
