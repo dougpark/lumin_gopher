@@ -48,6 +48,36 @@
     </header>
 
     <main class="max-w-6xl mx-auto px-6 py-8 space-y-8">
+        <section class="bg-white rounded-gemini-lg p-6 shadow-sm border border-gemini-border">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <h2 class="text-base font-semibold text-gemini-text">Last Run Stats</h2>
+                <span id="last-run-status"
+                    class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gemini-muted">Unknown</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="rounded-xl border border-gemini-border p-4">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide mb-1">Last Run</p>
+                    <p id="last-run-time" class="text-lg font-semibold text-gemini-text">-</p>
+                </div>
+                <div class="rounded-xl border border-gemini-border p-4">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide mb-1">Emails Fetched</p>
+                    <p id="last-run-fetched" class="text-2xl font-bold text-gemini-blue">0</p>
+                </div>
+                <div class="rounded-xl border border-gemini-border p-4">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide mb-1">Emails Ingested</p>
+                    <p id="last-run-ingested" class="text-2xl font-bold text-gemini-text">0</p>
+                </div>
+                <div class="rounded-xl border border-gemini-border p-4">
+                    <p class="text-xs text-gemini-muted uppercase tracking-wide mb-1">Total Archived</p>
+                    <p id="last-run-archived" class="text-2xl font-bold text-gemini-text">0</p>
+                </div>
+            </div>
+            <div class="mt-4 rounded-xl border border-gemini-border bg-gemini-surface/70 px-4 py-3">
+                <p class="text-xs text-gemini-muted uppercase tracking-wide mb-1">Message</p>
+                <p id="last-run-message" class="text-sm text-gemini-text">No status message yet.</p>
+            </div>
+        </section>
+
         <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="bg-white rounded-gemini-lg p-5 shadow-sm border border-gemini-border">
                 <p class="text-xs text-gemini-muted uppercase tracking-wide mb-1">Most Recent Processing</p>
@@ -144,6 +174,34 @@
             return dt.toLocaleString();
         }
 
+        function statusBadgeConfig(status) {
+            const normalized = String(status || '').toLowerCase();
+            if (normalized === 'success' || normalized === 'ok') {
+                return { text: 'Success', className: 'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700' };
+            }
+            if (normalized === 'warning') {
+                return { text: 'Warning', className: 'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700' };
+            }
+            if (normalized === 'error' || normalized === 'failed' || normalized === 'failure') {
+                return { text: 'Error', className: 'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700' };
+            }
+            return { text: status ? String(status) : 'Unknown', className: 'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gemini-muted' };
+        }
+
+        function renderLastRun(run) {
+            const safeRun = run || {};
+            const badge = statusBadgeConfig(safeRun.last_status);
+            const statusEl = document.getElementById('last-run-status');
+            statusEl.className = badge.className;
+            statusEl.textContent = badge.text;
+
+            document.getElementById('last-run-time').textContent = formatDateTime(safeRun.last_run);
+            document.getElementById('last-run-fetched').textContent = formatNumber(safeRun.emails_fetched);
+            document.getElementById('last-run-ingested').textContent = formatNumber(safeRun.emails_ingested);
+            document.getElementById('last-run-archived').textContent = formatNumber(safeRun.total_archived);
+            document.getElementById('last-run-message').textContent = safeRun.message || 'No status message provided.';
+        }
+
         function setStatus(ok, text) {
             const dot = document.getElementById('status-dot');
             const label = document.getElementById('status-label');
@@ -195,12 +253,14 @@
                 document.getElementById('total-processed').textContent = formatNumber(data.summary?.total_emails_processed_to_date);
                 document.getElementById('db-mode').textContent = `DB: read-only | journal_mode=${data.database?.journal_mode || 'unknown'}`;
 
+                renderLastRun(data.last_run);
                 renderActivity(data.recent_activity || []);
                 updateTrendChart(data.recent_activity || []);
                 setStatus(true, 'Connected');
                 document.getElementById('last-refresh').textContent = `Updated ${new Date().toLocaleTimeString()}`;
             } catch (err) {
                 setStatus(false, 'Error');
+                renderLastRun(null);
                 updateTrendChart([]);
                 document.getElementById('activity-body').innerHTML = `<tr><td colspan="2" class="py-6 text-center text-red-500 text-sm">Failed to load stats: ${String(err.message || err)}</td></tr>`;
             }

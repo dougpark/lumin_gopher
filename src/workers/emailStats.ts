@@ -7,6 +7,15 @@ export interface EmailProcessingActivity {
     emails_processed: number;
 }
 
+export interface LastRunStats {
+    last_run: string | null;
+    last_status: string | null;
+    emails_fetched: number;
+    emails_ingested: number;
+    total_archived: number;
+    message: string | null;
+}
+
 export interface EmailStatsResponse {
     status: "ok";
     generated_at: number;
@@ -20,6 +29,7 @@ export interface EmailStatsResponse {
         most_recent_emails_processed: number;
         total_emails_processed_to_date: number;
     };
+    last_run: LastRunStats;
     recent_activity: EmailProcessingActivity[];
 }
 
@@ -71,6 +81,50 @@ export function getEmailStats(limit = 20): EmailStatsResponse {
     try {
         const safeLimit = Math.max(1, Math.min(limit, 100));
 
+        let lastRun: LastRunStats = {
+            last_run: null,
+            last_status: null,
+            emails_fetched: 0,
+            emails_ingested: 0,
+            total_archived: 0,
+            message: null,
+        };
+
+        try {
+            const row = db.query<{
+                last_run: string | null;
+                last_status: string | null;
+                emails_fetched: number;
+                emails_ingested: number;
+                total_archived: number;
+                message: string | null;
+            }, []>(`
+                SELECT
+                    last_run,
+                    last_status,
+                    emails_fetched,
+                    emails_ingested,
+                    total_archived,
+                    message
+                FROM system_status
+                ORDER BY last_run DESC
+                LIMIT 1
+            `).get();
+
+            if (row) {
+                lastRun = {
+                    last_run: row.last_run,
+                    last_status: row.last_status,
+                    emails_fetched: row.emails_fetched ?? 0,
+                    emails_ingested: row.emails_ingested ?? 0,
+                    total_archived: row.total_archived ?? 0,
+                    message: row.message,
+                };
+            }
+        } catch {
+            // Keep endpoint backward compatible even if system_status is unavailable.
+        }
+
         const totalRow = db.query<{ total: number }, []>(`
             SELECT COUNT(*) AS total
             FROM email_archive_items
@@ -103,6 +157,7 @@ export function getEmailStats(limit = 20): EmailStatsResponse {
                 most_recent_emails_processed: latest?.emails_processed ?? 0,
                 total_emails_processed_to_date: totalRow?.total ?? 0,
             },
+            last_run: lastRun,
             recent_activity: recentActivity,
         };
     } finally {
