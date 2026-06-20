@@ -66,6 +66,8 @@ console.log(`[System] Gopher is now eyes-on: ${INBOX_PATH}`);
 // 1. Start the Management UI (The "Web Server")
 const DASHBOARD_PATH = path.join(import.meta.dir, "client", "dashboard.html");
 const EMAIL_DASHBOARD_PATH = path.join(import.meta.dir, "client", "email.html");
+const SIDEBAR_SCRIPT_PATH = path.join(import.meta.dir, "client", "assets", "sidebar.js");
+const SIDEBAR_NAV_PATH = path.join(import.meta.dir, "client", "assets", "sidebar-nav.json");
 
 const app = new Hono();
 
@@ -161,6 +163,19 @@ app.get("/email/stats", (c) => {
         const message = error instanceof Error ? error.message : "Unknown error";
         return c.json({ status: "error", message }, 500);
     }
+});
+
+// Shared client assets for sidebar navigation
+app.get("/assets/sidebar.js", (c) => {
+    return new Response(Bun.file(SIDEBAR_SCRIPT_PATH), {
+        headers: { "Content-Type": "application/javascript; charset=utf-8" }
+    });
+});
+
+app.get("/assets/sidebar-nav.json", (c) => {
+    return new Response(Bun.file(SIDEBAR_NAV_PATH), {
+        headers: { "Content-Type": "application/json; charset=utf-8" }
+    });
 });
 
 const server = Bun.serve({

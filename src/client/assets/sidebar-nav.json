@@ -1,0 +1,110 @@
+{
+  "sections": [
+    {
+      "id": "ingestion-streams",
+      "title": "Ingestion Streams",
+      "icon": "stream",
+      "defaultExpanded": true,
+      "items": [
+        {
+          "label": "Dashboard",
+          "href": "/",
+          "icon": "dashboard"
+        },
+        {
+          "label": "Email Stats",
+          "href": "/email",
+          "icon": "email"
+        },
+        {
+          "label": "Social Streams",
+          "icon": "social",
+          "children": [
+            {
+              "label": "Bluesky",
+              "href": "/bluesky",
+              "icon": "bluesky",
+              "comingSoon": true
+            },
+            {
+              "label": "Mastodon",
+              "href": "/mastodon",
+              "icon": "mastodon",
+              "comingSoon": true
+            }
+          ]
+        },
+        {
+          "label": "Bookmarks",
+          "icon": "bookmark",
+          "children": [
+            {
+              "label": "Pinboard",
+              "href": "/pinboard",
+              "icon": "pinboard",
+              "comingSoon": true
+            },
+            {
+              "label": "Feedbin",
+              "href": "/feedbin",
+              "icon": "feedbin",
+              "comingSoon": true
+            },
+            {
+              "label": "Day One",
+              "href": "/dayone",
+              "icon": "dayone",
+              "comingSoon": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "system-tools",
+      "title": "System Tools",
+      "icon": "tools",
+      "defaultExpanded": true,
+      "items": [
+        {
+          "label": "Monitoring",
+          "href": "/monitoring",
+          "icon": "monitor",
+          "comingSoon": true
+        },
+        {
+          "label": "Queue Status",
+          "href": "/queue",
+          "icon": "queue",
+          "comingSoon": true
+        },
+        {
+          "label": "Model Load",
+          "href": "/models",
+          "icon": "model",
+          "comingSoon": true
+        }
+      ]
+    },
+    {
+      "id": "archives",
+      "title": "Archives",
+      "icon": "archive",
+      "defaultExpanded": false,
+      "items": [
+        {
+          "label": "Email Archive",
+          "href": "/email/archive",
+          "icon": "archive",
+          "comingSoon": true
+        },
+        {
+          "label": "Bookmarks Archive",
+          "href": "/bookmarks/archive",
+          "icon": "archive",
+          "comingSoon": true
+        }
+      ]
+    }
+  ]
+}
