@@ -138,6 +138,7 @@
                     <div>
                         <h2 class="text-base font-semibold text-gemini-text">Archived Email List</h2>
                         <p id="results-summary" class="text-sm text-gemini-muted mt-1">Loading…</p>
+                        <p id="list-feedback" class="text-xs mt-1 hidden"></p>
                     </div>
                     <div class="flex items-center gap-2">
                         <button id="prev-page" type="button"
@@ -210,6 +211,7 @@
             listItems: [],
             currentDetail: null,
         };
+        let listFeedbackTimer = null;
 
         function formatDateTime(value) {
             if (!value) return '—';
@@ -250,6 +252,42 @@
             document.getElementById('stat-limit').textContent = state.limit.toLocaleString();
         }
 
+        function showListFeedback(message, tone = 'success') {
+            const el = document.getElementById('list-feedback');
+            if (!message) {
+                el.className = 'text-xs mt-1 hidden';
+                el.textContent = '';
+                return;
+            }
+
+            const toneClass = tone === 'error'
+                ? 'text-red-600'
+                : tone === 'warning'
+                    ? 'text-amber-600'
+                    : 'text-green-600';
+
+            el.className = `text-xs mt-1 ${toneClass}`;
+            el.textContent = message;
+
+            if (listFeedbackTimer) {
+                clearTimeout(listFeedbackTimer);
+            }
+            listFeedbackTimer = setTimeout(() => {
+                showListFeedback('');
+            }, 4500);
+        }
+
+        function resetDetailPanel(message = 'No email selected.') {
+            document.getElementById('detail-subject').textContent = 'Select an email';
+            document.getElementById('detail-meta-line').textContent = 'Choose a row on the left to inspect the archived message.';
+            document.getElementById('stat-selection').textContent = message;
+            document.getElementById('detail-panel').innerHTML = `
+                <div class="rounded-2xl border border-dashed border-gemini-border px-4 py-8 text-center text-gemini-muted">
+                    ${escapeHtml(message)}
+                </div>
+            `;
+        }
+
         function renderList(items) {
             const body = document.getElementById('email-list-body');
 
@@ -266,11 +304,20 @@
                 const clipIcon = item.has_attachments
                     ? `<svg class="inline-block w-3.5 h-3.5 mr-1.5 text-gemini-muted shrink-0 -mt-px" viewBox="0 0 20 20" fill="none" aria-label="Has attachments"><path d="M4.5 12.5L11 6a3.536 3.536 0 1 1 5 5l-7.5 7.5A2 2 0 0 1 5.672 15.7l6.364-6.364a.5.5 0 0 0-.707-.707L5.672 14.29a1 1 0 0 1-1.414-1.414l7.5-7.5a2.5 2.5 0 1 1 3.535 3.535l-6.5 6.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`
                     : '';
+                const deleteLabel = `Delete ${subject}`;
 
                 return `
-                    <tr class="border-b border-gemini-border/70 ${rowClass} cursor-pointer transition-colors" data-email-id="${escapeHtml(item.id)}">
+                    <tr class="group border-b border-gemini-border/70 ${rowClass} cursor-pointer transition-colors" data-email-id="${escapeHtml(item.id)}">
                         <td class="px-5 py-4 align-top">
-                            <div class="font-medium text-gemini-text">${clipIcon}${subject}</div>
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="font-medium text-gemini-text min-w-0">${clipIcon}${subject}</div>
+                                <button type="button" data-delete-id="${escapeHtml(item.id)}" aria-label="${deleteLabel}"
+                                    class="shrink-0 rounded-md p-1.5 text-gemini-muted opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-red-600 hover:bg-red-50 transition">
+                                    <svg class="w-4 h-4" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                        <path d="M7.5 3h5M4.5 5h11M8 8.5v6M12 8.5v6M6.5 5l.5 10a1 1 0 0 0 1 .95h4a1 1 0 0 0 1-.95l.5-10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </button>
+                            </div>
                             <div class="text-xs text-gemini-muted mt-1">${escapeHtml(item.id)}</div>
                         </td>
                         <td class="px-5 py-4 align-top text-gemini-text">${sender}</td>
@@ -283,6 +330,67 @@
             body.querySelectorAll('[data-email-id]').forEach((row) => {
                 row.addEventListener('click', () => loadDetail(row.dataset.emailId));
             });
+
+            body.querySelectorAll('[data-delete-id]').forEach((button) => {
+                button.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    deleteEmail(button.dataset.deleteId);
+                });
+            });
+        }
+
+        async function deleteEmail(id) {
+            if (!id) return;
+
+            const item = state.listItems.find((row) => row.id === id);
+            const subject = item?.subject || id;
+            const confirmed = window.confirm(`Delete "${subject}"? This removes the archive record and associated .eml file.`);
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`/email/viewer/item/${encodeURIComponent(id)}`, {
+                    method: 'DELETE',
+                    headers: { 'Accept': 'application/json' },
+                });
+                const payload = await res.json().catch(() => ({ status: 'error', message: `HTTP ${res.status}` }));
+
+                if (!res.ok && payload.status !== 'not_found') {
+                    throw new Error(payload.message || `HTTP ${res.status}`);
+                }
+
+                const removedSelected = state.selectedId === id;
+                state.listItems = state.listItems.filter((row) => row.id !== id);
+                state.total = Math.max(0, state.total - 1);
+
+                if (removedSelected) {
+                    state.selectedId = null;
+                    state.currentDetail = null;
+                    resetDetailPanel('Email deleted. Select another message.');
+                }
+
+                renderList(state.listItems);
+                updatePager();
+
+                if (state.listItems.length === 0 && state.offset > 0) {
+                    state.offset = Math.max(0, state.offset - state.limit);
+                    await loadList();
+                } else if (!state.selectedId && state.listItems.length > 0) {
+                    await loadDetail(state.listItems[0].id);
+                }
+
+                if (payload.status === 'partial_file_delete_failed') {
+                    showListFeedback('Email deleted, but file cleanup failed.', 'warning');
+                } else if (payload.status === 'not_found') {
+                    showListFeedback('Email was already removed.', 'warning');
+                } else {
+                    showListFeedback('Email deleted.', 'success');
+                }
+            } catch (error) {
+                showListFeedback(`Delete failed: ${String(error.message || error)}`, 'error');
+            }
         }
 
         function renderHeaders(headers) {
@@ -439,6 +547,7 @@
                 if (state.selectedId && !state.listItems.some((item) => item.id === state.selectedId)) {
                     state.selectedId = null;
                     state.currentDetail = null;
+                    resetDetailPanel();
                 }
 
                 renderList(state.listItems);
@@ -508,6 +617,7 @@
         });
 
         updateModeButtons();
+        resetDetailPanel();
         loadList();
     </script>
 </body>

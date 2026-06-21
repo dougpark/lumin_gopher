@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { existsSync } from "node:fs";
+import { existsSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { simpleParser } from "mailparser";
 import sanitizeHtml from "sanitize-html";
@@ -16,6 +16,13 @@ export interface EmailAttachmentContent {
     filename: string;
     contentType: string;
     buffer: Buffer;
+}
+
+export interface DeleteArchivedEmailResult {
+    status: "ok" | "not_found" | "partial_file_delete_failed" | "error";
+    id: string;
+    message: string;
+    file_deleted: boolean;
 }
 
 const EMAIL_DB_PATH = process.env.EMAIL_DB_PATH ?? "/app/emaildata/db.sqlite";
@@ -101,6 +108,13 @@ interface EmailArchiveRow {
 function openReadOnlyEmailDb(): Database {
     const db = new Database(EMAIL_DB_PATH, { readonly: true });
     db.exec("PRAGMA query_only = ON;");
+    db.exec("PRAGMA busy_timeout = 5000;");
+    return db;
+}
+
+function openReadWriteEmailDb(): Database {
+    const db = new Database(EMAIL_DB_PATH);
+    db.exec("PRAGMA journal_mode = WAL;");
     db.exec("PRAGMA busy_timeout = 5000;");
     return db;
 }
@@ -288,6 +302,97 @@ export function listArchivedEmails(params: EmailViewerListParams = {}): Archived
         };
     } finally {
         db.close();
+    }
+}
+
+export function deleteArchivedEmail(id: string): DeleteArchivedEmailResult {
+    const emailId = id.trim();
+    if (!emailId) {
+        return {
+            status: "error",
+            id,
+            message: "Invalid email id.",
+            file_deleted: false,
+        };
+    }
+
+    const db = openReadWriteEmailDb();
+    let resolvedPath: string | null = null;
+
+    try {
+        const removeRecordTx = db.transaction((targetId: string) => {
+            const row = db.query<{ storage_path: string | null }, [string]>(`
+                SELECT storage_path
+                FROM email_archive_items
+                WHERE id = ?
+                LIMIT 1
+            `).get(targetId);
+
+            if (!row) {
+                return null;
+            }
+
+            db.query(`DELETE FROM email_archive_items WHERE id = ?`).run(targetId);
+            return row;
+        });
+
+        const row = removeRecordTx(emailId);
+        if (!row) {
+            return {
+                status: "not_found",
+                id: emailId,
+                message: "Archived email not found.",
+                file_deleted: false,
+            };
+        }
+
+        if (row.storage_path) {
+            resolvedPath = resolveStoragePath(row.storage_path);
+        }
+    } catch (error) {
+        return {
+            status: "error",
+            id: emailId,
+            message: error instanceof Error ? error.message : "Delete failed.",
+            file_deleted: false,
+        };
+    } finally {
+        db.close();
+    }
+
+    if (!resolvedPath) {
+        return {
+            status: "ok",
+            id: emailId,
+            message: "Archived email deleted. No file path was recorded.",
+            file_deleted: false,
+        };
+    }
+
+    if (!existsSync(resolvedPath)) {
+        return {
+            status: "ok",
+            id: emailId,
+            message: "Archived email deleted. File was already missing.",
+            file_deleted: false,
+        };
+    }
+
+    try {
+        unlinkSync(resolvedPath);
+        return {
+            status: "ok",
+            id: emailId,
+            message: "Archived email and file deleted.",
+            file_deleted: true,
+        };
+    } catch (error) {
+        return {
+            status: "partial_file_delete_failed",
+            id: emailId,
+            message: error instanceof Error ? error.message : "Email record deleted, but file delete failed.",
+            file_deleted: false,
+        };
     }
 }
 

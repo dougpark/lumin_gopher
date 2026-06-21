@@ -15,7 +15,7 @@ import { fetchPinboardPopular, todayFileExists } from "./workers/pinboard";
 import { fetchFeedbinStarred } from "./workers/feedbin";
 import { runFullTextFetch } from "./workers/fulltext";
 import { getEmailStats } from "./workers/emailStats";
-import { getArchivedEmailAttachment, getArchivedEmailDetail, listArchivedEmails } from "./workers/emailViewer.ts";
+import { deleteArchivedEmail, getArchivedEmailAttachment, getArchivedEmailDetail, listArchivedEmails } from "./workers/emailViewer.ts";
 
 /**
  * LUMIN GOPHER - Folder Watcher Feature
@@ -200,6 +200,30 @@ app.get("/email/viewer/list", (c) => {
             dateFrom: dateFrom || undefined,
             dateTo: dateTo || undefined,
         }));
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        return c.json({ status: "error", message }, 500);
+    }
+});
+
+// Email archive delete endpoint
+app.delete("/email/viewer/item/:id", (c) => {
+    try {
+        const id = c.req.param("id").trim();
+        if (!id) {
+            return c.json({ status: "error", message: "Invalid email id." }, 400);
+        }
+
+        const result = deleteArchivedEmail(id);
+        if (result.status === "not_found") {
+            return c.json(result, 404);
+        }
+
+        if (result.status === "error") {
+            return c.json(result, 500);
+        }
+
+        return c.json(result);
     } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
         return c.json({ status: "error", message }, 500);
