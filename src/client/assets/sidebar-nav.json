@@ -98,10 +98,9 @@
       "defaultExpanded": false,
       "items": [
         {
-          "label": "Email Archive",
-          "href": "/email/archive",
-          "icon": "archive",
-          "comingSoon": true
+          "label": "Email Viewer",
+          "href": "/email/viewer",
+          "icon": "archive"
         },
         {
           "label": "Bookmarks Archive",

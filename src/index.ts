@@ -15,6 +15,7 @@ import { fetchPinboardPopular, todayFileExists } from "./workers/pinboard";
 import { fetchFeedbinStarred } from "./workers/feedbin";
 import { runFullTextFetch } from "./workers/fulltext";
 import { getEmailStats } from "./workers/emailStats";
+import { getArchivedEmailAttachment, getArchivedEmailDetail, listArchivedEmails } from "./workers/emailViewer.ts";
 
 /**
  * LUMIN GOPHER - Folder Watcher Feature
@@ -66,6 +67,7 @@ console.log(`[System] Gopher is now eyes-on: ${INBOX_PATH}`);
 // 1. Start the Management UI (The "Web Server")
 const DASHBOARD_PATH = path.join(import.meta.dir, "client", "dashboard.html");
 const EMAIL_DASHBOARD_PATH = path.join(import.meta.dir, "client", "email.html");
+const EMAIL_VIEWER_PATH = path.join(import.meta.dir, "client", "emailviewer.html");
 const SYSTEM_HEALTH_PATH = path.join(import.meta.dir, "client", "system-health.html");
 const SIDEBAR_SCRIPT_PATH = path.join(import.meta.dir, "client", "assets", "sidebar.js");
 const SIDEBAR_NAV_PATH = path.join(import.meta.dir, "client", "assets", "sidebar-nav.json");
@@ -155,6 +157,13 @@ app.get("/email", (c) => {
     });
 });
 
+// Email archive viewer
+app.get("/email/viewer", (c) => {
+    return new Response(Bun.file(EMAIL_VIEWER_PATH), {
+        headers: { "Content-Type": "text/html" }
+    });
+});
+
 // System health dashboard
 app.get("/system-health", (c) => {
     return new Response(Bun.file(SYSTEM_HEALTH_PATH), {
@@ -167,6 +176,76 @@ app.get("/email/stats", (c) => {
     try {
         const limit = Math.min(parseInt(c.req.query("limit") ?? "20", 10), 100);
         return c.json(getEmailStats(limit));
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        return c.json({ status: "error", message }, 500);
+    }
+});
+
+// Email archive viewer list endpoint
+app.get("/email/viewer/list", (c) => {
+    try {
+        const limit = Math.min(parseInt(c.req.query("limit") ?? "25", 10), 100);
+        const offset = Math.max(parseInt(c.req.query("offset") ?? "0", 10), 0);
+        const q = (c.req.query("q") ?? "").trim();
+        const sender = (c.req.query("sender") ?? "").trim();
+        const dateFrom = (c.req.query("dateFrom") ?? "").trim();
+        const dateTo = (c.req.query("dateTo") ?? "").trim();
+
+        return c.json(listArchivedEmails({
+            limit,
+            offset,
+            q: q || undefined,
+            sender: sender || undefined,
+            dateFrom: dateFrom || undefined,
+            dateTo: dateTo || undefined,
+        }));
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        return c.json({ status: "error", message }, 500);
+    }
+});
+
+// Email attachment streaming endpoint
+app.get("/email/viewer/item/:id/attachment/:index", async (c) => {
+    try {
+        const id = c.req.param("id");
+        const index = parseInt(c.req.param("index"), 10);
+        if (Number.isNaN(index) || index < 0 || index > 99) {
+            return c.json({ status: "error", message: "Invalid attachment index." }, 400);
+        }
+
+        const attachment = await getArchivedEmailAttachment(id, index);
+        if (!attachment) {
+            return c.json({ status: "not_found", message: "Attachment not found." }, 404);
+        }
+
+        const safe = attachment.filename.replace(/[^\w\-. ()\[\]]/g, "_");
+        return new Response(attachment.buffer, {
+            headers: {
+                "Content-Type": attachment.contentType,
+                "Content-Disposition": `inline; filename="${safe}"`,
+                "Content-Length": String(attachment.buffer.length),
+                "Cache-Control": "private, max-age=3600",
+            },
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        return c.json({ status: "error", message }, 500);
+    }
+});
+
+// Email archive viewer detail endpoint
+app.get("/email/viewer/item/:id", async (c) => {
+    try {
+        const id = c.req.param("id");
+        const detail = await getArchivedEmailDetail(id);
+
+        if (!detail) {
+            return c.json({ status: "not_found", message: "Archived email not found." }, 404);
+        }
+
+        return c.json({ status: "ok", email: detail });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
         return c.json({ status: "error", message }, 500);

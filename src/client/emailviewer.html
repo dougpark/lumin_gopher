@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lumin Gopher — Email Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module" src="/assets/sidebar.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'gemini-blue': '#4285F4',
+                        'gemini-surface': '#F0F2F5',
+                        'gemini-card': '#FFFFFF',
+                        'gemini-border': '#E3E3E3',
+                        'gemini-text': '#1F1F1F',
+                        'gemini-muted': '#5F6368',
+                        'email-tint': '#EEF5FF',
+                        'email-accent': '#0F6CBD',
+                    },
+                    borderRadius: {
+                        'gemini-lg': '24px',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .email-html-body {
+            color: #1f1f1f;
+            line-height: 1.65;
+            word-break: break-word;
+        }
+
+        .email-html-body table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .email-html-body td,
+        .email-html-body th {
+            border: 1px solid #e3e3e3;
+            padding: 0.5rem;
+            vertical-align: top;
+        }
+
+        .email-html-body a {
+            color: #0f6cbd;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body class="bg-gemini-surface min-h-screen font-sans text-gemini-text">
+    <header class="bg-white border-b border-gemini-border sticky top-0 z-10 shadow-sm">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3 min-w-0">
+                <span class="text-2xl">📬</span>
+                <div class="min-w-0">
+                    <h1 class="text-xl font-semibold text-gemini-text truncate">Email Viewer</h1>
+                    <p class="text-xs text-gemini-muted">Browse archived messages from the shared email volume</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+                <span id="status-dot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-300"></span>
+                <span id="status-label" class="text-sm text-gemini-muted">Connecting...</span>
+                <span class="text-xs text-gemini-muted" id="last-refresh"></span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-6 py-8 space-y-6">
+        <section class="rounded-gemini-lg border border-gemini-border bg-email-tint p-6 shadow-sm">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                    <p class="text-xs uppercase tracking-[0.2em] text-email-accent font-semibold mb-2">Archive Search
+                    </p>
+                    <h2 class="text-2xl font-semibold text-gemini-text">Inspect archived emails without leaving the
+                        dashboard</h2>
+                    <p class="text-sm text-gemini-muted mt-2 max-w-3xl">Filter by subject, sender, or date, then open a
+                        record to inspect headers, attachments, and the parsed body content.</p>
+                </div>
+                <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[420px]">
+                    <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-3">
+                        <p class="text-[11px] uppercase tracking-wide text-gemini-muted">Results</p>
+                        <p id="stat-total" class="text-2xl font-semibold text-gemini-text">0</p>
+                    </div>
+                    <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-3">
+                        <p class="text-[11px] uppercase tracking-wide text-gemini-muted">Page Size</p>
+                        <p id="stat-limit" class="text-2xl font-semibold text-gemini-text">25</p>
+                    </div>
+                    <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 col-span-2">
+                        <p class="text-[11px] uppercase tracking-wide text-gemini-muted">Selection</p>
+                        <p id="stat-selection" class="text-sm font-medium text-gemini-text truncate">No email selected
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-gemini-lg p-5 shadow-sm border border-gemini-border">
+            <form id="filters-form" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+                <label class="block">
+                    <span class="text-xs uppercase tracking-wide text-gemini-muted">Subject or sender</span>
+                    <input id="filter-q" type="text" placeholder="Search subject or sender"
+                        class="mt-1 w-full rounded-2xl border border-gemini-border bg-gemini-surface px-4 py-2.5 text-sm text-gemini-text focus:border-email-accent focus:outline-none focus:ring-2 focus:ring-email-accent/20" />
+                </label>
+                <label class="block">
+                    <span class="text-xs uppercase tracking-wide text-gemini-muted">Sender</span>
+                    <input id="filter-sender" type="text" placeholder="name@example.com"
+                        class="mt-1 w-full rounded-2xl border border-gemini-border bg-gemini-surface px-4 py-2.5 text-sm text-gemini-text focus:border-email-accent focus:outline-none focus:ring-2 focus:ring-email-accent/20" />
+                </label>
+                <label class="block">
+                    <span class="text-xs uppercase tracking-wide text-gemini-muted">From date</span>
+                    <input id="filter-date-from" type="date"
+                        class="mt-1 w-full rounded-2xl border border-gemini-border bg-gemini-surface px-4 py-2.5 text-sm text-gemini-text focus:border-email-accent focus:outline-none focus:ring-2 focus:ring-email-accent/20" />
+                </label>
+                <label class="block">
+                    <span class="text-xs uppercase tracking-wide text-gemini-muted">To date</span>
+                    <input id="filter-date-to" type="date"
+                        class="mt-1 w-full rounded-2xl border border-gemini-border bg-gemini-surface px-4 py-2.5 text-sm text-gemini-text focus:border-email-accent focus:outline-none focus:ring-2 focus:ring-email-accent/20" />
+                </label>
+                <div class="flex items-end gap-2">
+                    <button type="submit"
+                        class="flex-1 rounded-2xl bg-email-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0b5c9d]">Apply</button>
+                    <button id="reset-filters" type="button"
+                        class="rounded-2xl border border-gemini-border px-4 py-2.5 text-sm font-medium text-gemini-text transition hover:border-email-accent hover:text-email-accent">Reset</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="grid grid-cols-1 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] gap-6">
+            <div class="bg-white rounded-gemini-lg shadow-sm border border-gemini-border overflow-hidden">
+                <div class="flex items-center justify-between px-5 py-4 border-b border-gemini-border">
+                    <div>
+                        <h2 class="text-base font-semibold text-gemini-text">Archived Email List</h2>
+                        <p id="results-summary" class="text-sm text-gemini-muted mt-1">Loading…</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="prev-page" type="button"
+                            class="rounded-full border border-gemini-border px-3 py-1.5 text-sm text-gemini-text transition hover:border-email-accent hover:text-email-accent disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
+                        <button id="next-page" type="button"
+                            class="rounded-full border border-gemini-border px-3 py-1.5 text-sm text-gemini-text transition hover:border-email-accent hover:text-email-accent disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[760px] text-sm text-left">
+                        <thead>
+                            <tr
+                                class="border-b border-gemini-border bg-gemini-surface/60 text-gemini-muted text-xs uppercase tracking-wide">
+                                <th class="px-5 py-3 font-medium">Subject</th>
+                                <th class="px-5 py-3 font-medium">Sender</th>
+                                <th class="px-5 py-3 font-medium">Created</th>
+                                <th class="px-5 py-3 font-medium">Processed</th>
+                            </tr>
+                        </thead>
+                        <tbody id="email-list-body">
+                            <tr>
+                                <td colspan="4" class="px-5 py-10 text-center text-gemini-muted">Loading archived
+                                    emails...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-gemini-lg shadow-sm border border-gemini-border overflow-hidden">
+                <div class="px-5 py-4 border-b border-gemini-border">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs uppercase tracking-wide text-email-accent font-semibold">Email Details</p>
+                            <h2 id="detail-subject" class="text-xl font-semibold text-gemini-text mt-1">Select an email
+                            </h2>
+                            <p id="detail-meta-line" class="text-sm text-gemini-muted mt-2">Choose a row on the left to
+                                inspect the archived message.</p>
+                        </div>
+                        <div class="inline-flex rounded-full border border-gemini-border p-1 bg-gemini-surface">
+                            <button type="button" data-view-mode="html"
+                                class="detail-mode-btn rounded-full px-3 py-1.5 text-sm font-medium text-gemini-text">HTML</button>
+                            <button type="button" data-view-mode="text"
+                                class="detail-mode-btn rounded-full px-3 py-1.5 text-sm font-medium text-gemini-text">Text</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="detail-panel" class="p-5 space-y-5">
+                    <div
+                        class="rounded-2xl border border-dashed border-gemini-border px-4 py-8 text-center text-gemini-muted">
+                        No email selected.
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const state = {
+            limit: 25,
+            offset: 0,
+            total: 0,
+            q: '',
+            sender: '',
+            dateFrom: '',
+            dateTo: '',
+            selectedId: null,
+            detailViewMode: 'html',
+            listItems: [],
+            currentDetail: null,
+        };
+
+        function formatDateTime(value) {
+            if (!value) return '—';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return String(value);
+            return date.toLocaleString();
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function setStatus(ok, text) {
+            document.getElementById('status-dot').className = `inline-block w-2.5 h-2.5 rounded-full ${ok ? 'bg-green-500' : 'bg-red-500'}`;
+            document.getElementById('status-label').textContent = text;
+            document.getElementById('last-refresh').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        }
+
+        function updateModeButtons() {
+            document.querySelectorAll('.detail-mode-btn').forEach((button) => {
+                const active = button.dataset.viewMode === state.detailViewMode;
+                button.className = `detail-mode-btn rounded-full px-3 py-1.5 text-sm font-medium transition ${active ? 'bg-white text-email-accent shadow-sm' : 'text-gemini-text'}`;
+            });
+        }
+
+        function updatePager() {
+            document.getElementById('prev-page').disabled = state.offset === 0;
+            document.getElementById('next-page').disabled = state.offset + state.limit >= state.total;
+            document.getElementById('results-summary').textContent = state.total === 0
+                ? 'No archived emails matched the current filters.'
+                : `Showing ${state.offset + 1}-${Math.min(state.offset + state.limit, state.total)} of ${state.total}`;
+            document.getElementById('stat-total').textContent = state.total.toLocaleString();
+            document.getElementById('stat-limit').textContent = state.limit.toLocaleString();
+        }
+
+        function renderList(items) {
+            const body = document.getElementById('email-list-body');
+
+            if (!Array.isArray(items) || items.length === 0) {
+                body.innerHTML = '<tr><td colspan="4" class="px-5 py-10 text-center text-gemini-muted">No archived emails matched the current filters.</td></tr>';
+                return;
+            }
+
+            body.innerHTML = items.map((item) => {
+                const active = item.id === state.selectedId;
+                const rowClass = active ? 'bg-email-tint/70' : 'hover:bg-gemini-surface/70';
+                const subject = escapeHtml(item.subject || '(No subject)');
+                const sender = escapeHtml(item.sender || 'Unknown sender');
+                const clipIcon = item.has_attachments
+                    ? `<svg class="inline-block w-3.5 h-3.5 mr-1.5 text-gemini-muted shrink-0 -mt-px" viewBox="0 0 20 20" fill="none" aria-label="Has attachments"><path d="M4.5 12.5L11 6a3.536 3.536 0 1 1 5 5l-7.5 7.5A2 2 0 0 1 5.672 15.7l6.364-6.364a.5.5 0 0 0-.707-.707L5.672 14.29a1 1 0 0 1-1.414-1.414l7.5-7.5a2.5 2.5 0 1 1 3.535 3.535l-6.5 6.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`
+                    : '';
+
+                return `
+                    <tr class="border-b border-gemini-border/70 ${rowClass} cursor-pointer transition-colors" data-email-id="${escapeHtml(item.id)}">
+                        <td class="px-5 py-4 align-top">
+                            <div class="font-medium text-gemini-text">${clipIcon}${subject}</div>
+                            <div class="text-xs text-gemini-muted mt-1">${escapeHtml(item.id)}</div>
+                        </td>
+                        <td class="px-5 py-4 align-top text-gemini-text">${sender}</td>
+                        <td class="px-5 py-4 align-top text-gemini-muted">${escapeHtml(formatDateTime(item.created_at))}</td>
+                        <td class="px-5 py-4 align-top text-gemini-muted">${escapeHtml(formatDateTime(item.processed_at))}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            body.querySelectorAll('[data-email-id]').forEach((row) => {
+                row.addEventListener('click', () => loadDetail(row.dataset.emailId));
+            });
+        }
+
+        function renderHeaders(headers) {
+            if (!Array.isArray(headers) || headers.length === 0) {
+                return '<p class="text-sm text-gemini-muted">No metadata headers available.</p>';
+            }
+
+            return `
+                <div class="overflow-auto max-h-80 rounded-2xl border border-gemini-border">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-gemini-surface/70 text-gemini-muted uppercase text-xs tracking-wide sticky top-0">
+                            <tr>
+                                <th class="px-3 py-2 font-medium">Header</th>
+                                <th class="px-3 py-2 font-medium">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${headers.map((header) => `
+                                <tr class="border-t border-gemini-border/70 align-top">
+                                    <td class="px-3 py-2 font-medium text-gemini-text whitespace-nowrap">${escapeHtml(header.name)}</td>
+                                    <td class="px-3 py-2 text-gemini-muted whitespace-pre-wrap break-words">${escapeHtml(header.value)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderAttachments(attachments, emailId) {
+            if (!Array.isArray(attachments) || attachments.length === 0) {
+                return '<p class="text-sm text-gemini-muted">No attachments detected in the parsed message.</p>';
+            }
+
+            return `
+                <div class="space-y-2">
+                    ${attachments.map((attachment, idx) => {
+                const href = `/email/viewer/item/${encodeURIComponent(emailId)}/attachment/${idx}`;
+                const label = escapeHtml(attachment.filename || 'Unnamed attachment');
+                return `
+                        <div class="rounded-2xl border border-gemini-border bg-gemini-surface/60 px-3 py-3">
+                            <a href="${href}" target="_blank" rel="noopener noreferrer"
+                               class="font-medium text-email-accent hover:underline">${label}</a>
+                            <div class="text-xs text-gemini-muted mt-1">${escapeHtml(attachment.content_type)} · ${escapeHtml((attachment.size || 0).toLocaleString())} bytes</div>
+                        </div>`;
+            }).join('')}
+                </div>
+            `;
+        }
+
+        function renderDetail(email) {
+            const panel = document.getElementById('detail-panel');
+            const detail = email.rendered || {};
+            const subject = detail.subject || email.subject || '(No subject)';
+            const metaLine = [detail.from || email.sender, formatDateTime(detail.date || email.created_at), email.storage_path].filter(Boolean).join(' · ');
+            const htmlBody = detail.html
+                ? `<article class="email-html-body rounded-2xl border border-gemini-border bg-white px-4 py-4">${detail.html}</article>`
+                : '<div class="rounded-2xl border border-dashed border-gemini-border px-4 py-6 text-sm text-gemini-muted">No HTML body available for this message.</div>';
+            const textBody = detail.text
+                ? `<pre class="whitespace-pre-wrap break-words rounded-2xl border border-gemini-border bg-gemini-surface/70 px-4 py-4 text-sm text-gemini-text">${escapeHtml(detail.text)}</pre>`
+                : '<div class="rounded-2xl border border-dashed border-gemini-border px-4 py-6 text-sm text-gemini-muted">No plain text body available for this message.</div>';
+            const activeBody = state.detailViewMode === 'text' ? textBody : htmlBody;
+            const contentStatus = detail.content_error
+                ? `<div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">${escapeHtml(detail.content_error)}</div>`
+                : '';
+
+            document.getElementById('detail-subject').textContent = subject;
+            document.getElementById('detail-meta-line').textContent = metaLine || 'Archived message';
+            document.getElementById('stat-selection').textContent = subject;
+
+            panel.innerHTML = `
+                <section class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="rounded-2xl border border-gemini-border bg-gemini-surface/60 px-4 py-3">
+                        <p class="text-xs uppercase tracking-wide text-gemini-muted">From</p>
+                        <p class="text-sm text-gemini-text mt-1 break-words">${escapeHtml(detail.from || email.sender || 'Unknown sender')}</p>
+                    </div>
+                    <div class="rounded-2xl border border-gemini-border bg-gemini-surface/60 px-4 py-3">
+                        <p class="text-xs uppercase tracking-wide text-gemini-muted">To</p>
+                        <p class="text-sm text-gemini-text mt-1 break-words">${escapeHtml(detail.to || '—')}</p>
+                    </div>
+                    <div class="rounded-2xl border border-gemini-border bg-gemini-surface/60 px-4 py-3">
+                        <p class="text-xs uppercase tracking-wide text-gemini-muted">Created</p>
+                        <p class="text-sm text-gemini-text mt-1">${escapeHtml(formatDateTime(email.created_at))}</p>
+                    </div>
+                    <div class="rounded-2xl border border-gemini-border bg-gemini-surface/60 px-4 py-3">
+                        <p class="text-xs uppercase tracking-wide text-gemini-muted">Processed</p>
+                        <p class="text-sm text-gemini-text mt-1">${escapeHtml(formatDateTime(email.processed_at))}</p>
+                    </div>
+                </section>
+                ${contentStatus}
+                <section>
+                    <h3 class="text-sm font-semibold text-gemini-text mb-3">Message Body</h3>
+                    ${activeBody}
+                </section>
+                <section>
+                    <h3 class="text-sm font-semibold text-gemini-text mb-3">Attachments</h3>
+                    ${renderAttachments(detail.attachments || [], email.id)}
+                </section>
+                <section>
+                    <h3 class="text-sm font-semibold text-gemini-text mb-3">Metadata</h3>
+                    ${renderHeaders(detail.headers || [])}
+                </section>
+            `;
+        }
+
+        async function loadDetail(id) {
+            if (!id) return;
+
+            state.selectedId = id;
+            renderList(state.listItems);
+
+            const panel = document.getElementById('detail-panel');
+            panel.innerHTML = '<div class="rounded-2xl border border-dashed border-gemini-border px-4 py-8 text-center text-gemini-muted">Loading email details...</div>';
+
+            try {
+                const res = await fetch(`/email/viewer/item/${encodeURIComponent(id)}`, { cache: 'no-store' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                if (data.status !== 'ok' || !data.email) throw new Error('Invalid detail payload');
+
+                state.currentDetail = data.email;
+                renderDetail(data.email);
+                setStatus(true, 'Connected');
+            } catch (error) {
+                document.getElementById('detail-subject').textContent = 'Unable to load email';
+                document.getElementById('detail-meta-line').textContent = 'The selected message could not be loaded.';
+                document.getElementById('stat-selection').textContent = 'Load error';
+                panel.innerHTML = `<div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">${escapeHtml(String(error.message || error))}</div>`;
+                setStatus(false, 'Error');
+            }
+        }
+
+        async function loadList() {
+            const params = new URLSearchParams({
+                limit: String(state.limit),
+                offset: String(state.offset),
+            });
+            if (state.q) params.set('q', state.q);
+            if (state.sender) params.set('sender', state.sender);
+            if (state.dateFrom) params.set('dateFrom', state.dateFrom);
+            if (state.dateTo) params.set('dateTo', state.dateTo);
+
+            try {
+                const res = await fetch(`/email/viewer/list?${params}`, { cache: 'no-store' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                if (data.status !== 'ok') throw new Error('Invalid list payload');
+
+                state.total = Number(data.total || 0);
+                state.limit = Number(data.limit || state.limit);
+                state.offset = Number(data.offset || 0);
+                state.listItems = Array.isArray(data.items) ? data.items : [];
+
+                if (state.selectedId && !state.listItems.some((item) => item.id === state.selectedId)) {
+                    state.selectedId = null;
+                    state.currentDetail = null;
+                }
+
+                renderList(state.listItems);
+                updatePager();
+                setStatus(true, 'Connected');
+
+                if (!state.selectedId && state.listItems.length > 0) {
+                    loadDetail(state.listItems[0].id);
+                    return;
+                }
+
+                if (state.currentDetail && state.currentDetail.id === state.selectedId) {
+                    renderDetail(state.currentDetail);
+                }
+            } catch (error) {
+                document.getElementById('email-list-body').innerHTML = `<tr><td colspan="4" class="px-5 py-10 text-center text-red-600">Failed to load archived emails: ${escapeHtml(String(error.message || error))}</td></tr>`;
+                document.getElementById('results-summary').textContent = 'Unable to load archive list.';
+                setStatus(false, 'Error');
+            }
+        }
+
+        document.getElementById('filters-form').addEventListener('submit', (event) => {
+            event.preventDefault();
+            state.q = document.getElementById('filter-q').value.trim();
+            state.sender = document.getElementById('filter-sender').value.trim();
+            state.dateFrom = document.getElementById('filter-date-from').value;
+            state.dateTo = document.getElementById('filter-date-to').value;
+            state.offset = 0;
+            state.selectedId = null;
+            state.currentDetail = null;
+            loadList();
+        });
+
+        document.getElementById('reset-filters').addEventListener('click', () => {
+            document.getElementById('filter-q').value = '';
+            document.getElementById('filter-sender').value = '';
+            document.getElementById('filter-date-from').value = '';
+            document.getElementById('filter-date-to').value = '';
+            state.q = '';
+            state.sender = '';
+            state.dateFrom = '';
+            state.dateTo = '';
+            state.offset = 0;
+            state.selectedId = null;
+            state.currentDetail = null;
+            loadList();
+        });
+
+        document.getElementById('prev-page').addEventListener('click', () => {
+            state.offset = Math.max(0, state.offset - state.limit);
+            loadList();
+        });
+
+        document.getElementById('next-page').addEventListener('click', () => {
+            state.offset += state.limit;
+            loadList();
+        });
+
+        document.querySelectorAll('.detail-mode-btn').forEach((button) => {
+            button.addEventListener('click', () => {
+                state.detailViewMode = button.dataset.viewMode;
+                updateModeButtons();
+                if (state.currentDetail) {
+                    renderDetail(state.currentDetail);
+                }
+            });
+        });
+
+        updateModeButtons();
+        loadList();
+    </script>
+</body>
+
+</html>
