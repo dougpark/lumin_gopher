@@ -1,5 +1,5 @@
 # Lumin-Gopher System
-- a locally run lumin service/daemon
+- a locally run lumin gopher service/daemon
 - connects to external interfaces such as Pinboard, Feedbin, Jina, and a local Ollama instance
 - connects to the Lumin API
 - schedules jobs/tasks to run at specific times or intervals
