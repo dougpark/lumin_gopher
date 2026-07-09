@@ -252,7 +252,12 @@ async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult 
 
 // ── PATCH ────────────────────────────────────────────────────────────────────
 
-async function patchResults(results: EnrichmentResult[]): Promise<{ ok: boolean; updated: number }> {
+function resultKey(result: EnrichmentResult): string {
+    if (result.source === "file") return `file:${result.file_id}`;
+    return `${result.source}:${result.id}`;
+}
+
+async function patchItems(results: EnrichmentResult[]): Promise<{ ok: boolean; updated: number; status?: number; body?: string }> {
     const res = await fetch(`${LUMIN_API_URL}/ai/items`, {
         method: "PATCH",
         headers: {
@@ -271,12 +276,54 @@ async function patchResults(results: EnrichmentResult[]): Promise<{ ok: boolean;
             attempted: results.length,
             body: body.slice(0, 500)
         });
-        return { ok: false, updated: 0 };
+        return { ok: false, updated: 0, status: res.status, body: body.slice(0, 500) };
     }
 
     const { updated } = await res.json() as { updated: number };
     console.log(`[Enrichment] PATCH ok — attempted=${results.length}, updated=${updated}.`);
     return { ok: true, updated };
+}
+
+async function patchResults(results: EnrichmentResult[]): Promise<{ ok: boolean; updated: number }> {
+    const batch = await patchItems(results);
+    if (batch.ok) {
+        return { ok: true, updated: batch.updated };
+    }
+
+    // If batch patch fails, retry item-by-item so one bad item does not block the entire queue.
+    if (results.length <= 1) {
+        return { ok: false, updated: 0 };
+    }
+
+    console.warn(`[Enrichment] Retrying PATCH item-by-item after batch failure (attempted=${results.length}, status=${batch.status ?? "n/a"}).`);
+    let updated = 0;
+    let failed = 0;
+
+    for (const item of results) {
+        const single = await patchItems([item]);
+        if (single.ok) {
+            updated += single.updated;
+            continue;
+        }
+
+        failed++;
+        const key = resultKey(item);
+        console.error(`[Enrichment] Single-item PATCH failed for ${key}: HTTP ${single.status ?? "n/a"} — ${single.body ?? ""}`);
+        logEvent("api_error", "error", {
+            endpoint: "PATCH /ai/items",
+            mode: "single",
+            item: key,
+            status: single.status ?? null,
+            body: (single.body ?? "").slice(0, 500)
+        });
+    }
+
+    if (updated > 0) {
+        console.log(`[Enrichment] Single-item PATCH fallback updated=${updated}, failed=${failed}.`);
+        return { ok: true, updated };
+    }
+
+    return { ok: false, updated: 0 };
 }
 
 async function fetchQueueSource(
