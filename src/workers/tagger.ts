@@ -6,44 +6,11 @@
 
 import Bun from "bun";
 import path from "node:path";
-import { getDocumentProxy, extractText } from "unpdf";
-import mammoth from "mammoth";
 import { logEvent } from "../db/db";
+import { extractFileContent } from "./fileContent.ts";
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST ?? "http://host.docker.internal:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "gemma4:e4b";
-
-const TEXT_EXTENSIONS = new Set([
-    ".txt", ".md", ".markdown", ".ts", ".js", ".json", ".csv",
-    ".html", ".htm", ".xml", ".yaml", ".yml", ".toml", ".log",
-    ".sh", ".bash", ".py", ".rb", ".rs", ".go", ".c", ".cpp",
-    ".h", ".css", ".scss", ".sql"
-]);
-
-async function extractFileContent(filePath: string): Promise<string | null> {
-    const ext = path.extname(filePath).toLowerCase();
-
-    if (TEXT_EXTENSIONS.has(ext)) {
-        const text = await Bun.file(filePath).text();
-        return text.slice(0, 1000);
-    }
-
-    if (ext === ".pdf") {
-        const buffer = await Bun.file(filePath).arrayBuffer();
-        const pdf = await getDocumentProxy(new Uint8Array(buffer));
-        const { text } = await extractText(pdf, { mergePages: true });
-        return text.slice(0, 1000);
-    }
-
-    if (ext === ".docx") {
-        const buffer = await Bun.file(filePath).arrayBuffer();
-        const { value } = await mammoth.extractRawText({ buffer: Buffer.from(buffer) });
-        return value.slice(0, 1000);
-    }
-
-    // Unknown/binary format — fall back to filename only
-    return null;
-}
 
 export async function tagFileWithOllama(watchPath: string, filename: string): Promise<void> {
     const filePath = path.join(watchPath, filename);

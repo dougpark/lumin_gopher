@@ -110,6 +110,7 @@
                         <option value="file_drop">File Drop</option>
                         <option value="rss_enrichment">RSS Enrichment</option>
                         <option value="bookmark_enrichment">Bookmark Enrichment</option>
+                        <option value="file_enrichment">File Enrichment</option>
                         <option value="enrichment_cycle">Enrichment Cycle</option>
                         <option value="api_error">API Error</option>
                         <option value="feedbin">Feedbin Starred</option>
@@ -225,6 +226,7 @@
                 file_drop: 'bg-purple-100 text-purple-700',
                 rss_enrichment: 'bg-blue-100 text-blue-700',
                 bookmark_enrichment: 'bg-indigo-100 text-indigo-700',
+                file_enrichment: 'bg-emerald-100 text-emerald-700',
                 enrichment_cycle: 'bg-teal-100 text-teal-700',
                 api_error: 'bg-red-100 text-red-700',
                 system: 'bg-gray-100 text-gray-600',
@@ -250,10 +252,11 @@
                 const pendingEl = document.getElementById('stat-pending');
                 pendingEl.textContent = pending !== null ? pending.toLocaleString() : '—';
                 pendingEl.className = 'text-2xl font-semibold ' + (pending > 100 ? 'text-amber-500' : pending > 0 ? 'text-gemini-text' : 'text-green-500');
-                if (d.rss_pending !== null || d.bookmarks_pending !== null) {
+                if (d.rss_pending !== null || d.bookmarks_pending !== null || d.files_pending !== null) {
                     const parts = [];
                     if (d.rss_pending !== null) parts.push(`RSS ${d.rss_pending}`);
                     if (d.bookmarks_pending !== null) parts.push(`BK ${d.bookmarks_pending}`);
+                    if (d.files_pending !== null) parts.push(`Files ${d.files_pending}`);
                     document.getElementById('stat-pending-detail').textContent = parts.join(' · ');
                 }
                 if (d.last_cycle_at) {
@@ -336,6 +339,13 @@
                         if (d.gpu_temp_c !== null && d.gpu_temp_c !== undefined) gpuParts.push(`${d.gpu_temp_c}°C`);
                         const gpu = gpuParts.length ? `<span class="text-xs text-purple-600 font-mono">${gpuParts.join(' · ')}</span>` : '';
                         msg = `<div>${sourceBadge}${title}${feed}</div>${link}${tags ? `<div class="mt-0.5">${tags}</div>` : ''}${gpu ? `<div class="mt-0.5">${gpu}</div>` : ''}`;
+                    } else if (r.type === 'file_enrichment' && d.file_name) {
+                        const sourceBadge = `<span class="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 mr-1">File</span>`;
+                        const fileName = `<span class="font-medium text-gemini-text">${d.file_name}</span>`;
+                        const meta = [d.file_type, d.file_size ? `${d.file_size.toLocaleString()} bytes` : null].filter(Boolean).join(' · ');
+                        const tags = d.ai_tags?.length ? `<span class="text-gemini-muted">${d.ai_tags.join(', ')}</span>` : '';
+                        const summary = d.ai_summary ? `<div class="mt-0.5 text-gemini-muted">${d.ai_summary}</div>` : '';
+                        msg = `<div>${sourceBadge}${fileName}</div>${meta ? `<div class="text-gemini-muted mt-0.5">${meta}</div>` : ''}${tags ? `<div class="mt-0.5">${tags}</div>` : ''}${summary}`;
                     } else if (r.type === 'full_text') {
                         if (d.event === 'fulltext_batch') {
                             msg = `Batch ${d.batch}: <span class="text-green-600">${d.completed} completed</span>, <span class="text-red-500">${d.failed} failed</span> → ${d.updated} written <span class="text-gemini-muted">(${d.total_pending} pending)</span>`;
@@ -408,6 +418,13 @@
                         if (d.gpu_temp_c !== null && d.gpu_temp_c !== undefined) gpuParts.push(`${d.gpu_temp_c}°C`);
                         const gpu = gpuParts.length ? `<span class="text-xs text-purple-600 font-mono">${gpuParts.join(' · ')}</span>` : '';
                         msg = `<div>${sourceBadge}${titleText}${feed}</div>${link}${tags ? `<div class="mt-0.5">${tags}</div>` : ''}${gpu ? `<div class="mt-0.5">${gpu}</div>` : ''}`;
+                    } else if (r.type === 'file_enrichment' && d.file_name) {
+                        const sourceBadge = `<span class="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 mr-1">File</span>`;
+                        const fileName = `<span class="font-medium text-gemini-text">${d.file_name}</span>`;
+                        const meta = [d.file_type, d.file_size ? `${d.file_size.toLocaleString()} bytes` : null].filter(Boolean).join(' · ');
+                        const tags = d.ai_tags?.length ? `<span class="text-gemini-muted">${d.ai_tags.join(', ')}</span>` : '';
+                        const summary = d.ai_summary ? `<div class="mt-0.5 text-gemini-muted">${d.ai_summary}</div>` : '';
+                        msg = `<div>${sourceBadge}${fileName}</div>${meta ? `<div class="text-gemini-muted mt-0.5">${meta}</div>` : ''}${tags ? `<div class="mt-0.5">${tags}</div>` : ''}${summary}`;
                     } else if (r.type === 'full_text') {
                         if (d.event === 'fulltext_batch') {
                             msg = `Batch ${d.batch}: <span class="text-green-600">${d.completed} completed</span>, <span class="text-red-500">${d.failed} failed</span> → ${d.updated} written <span class="text-gemini-muted">(${d.total_pending} pending)</span>`;

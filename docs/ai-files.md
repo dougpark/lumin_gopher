@@ -5,16 +5,33 @@
 - use same schedule
 
 # Filter before sending to LLM
-- do not send unsupported binary files (e.g. .exe, .dll, .bin, .iso, etc.)
-- do not send: .zip, .tar, .dmg, etc.
-- do not send files larger than 10MB
-- acceptable file types: .txt, .md, .csv, .json, .xml, .html, .jpg, .jpeg, .png, .gif, webp, .mp3, .wav, .mp4, .mov, .avi, .mkv
 
-- requires preprocessing text extraction for: .pdf, .docx, .pptx, .xlsx // implement in version 2
+## Accepted files
+- acceptable file types: .txt, .md, .csv, .json, .xml, .html, .jpg, 
+- .jpeg, .png, .gif, webp, .mp3, .wav, .mp4, .mov, .avi, .mkv
+- mime types: text/plain, text/markdown, text/csv, application/json, application/xml, text/html, image/jpeg, image/png, image/gif, image/webp, audio/mpeg, audio/wav, video/mp4, video/quicktime, video/x-msvideo, video/x-matroska
+
+## Rejected files
+- do not send unsupported binary files: .exe, .dll, .bin, .iso, etc.
+- .zip, .tar, .dmg, etc.
+- do not send files larger than 10MB
+- reject: .pdf, .docx, .pptx, .xlsx // implement text extracation preprocess in future 2
 
 - rejected files should complete normally with a log message indicating the reason for rejection, and should not be retried in future queue requests.
 - rejected files should be returned in the queue response with a `rejected_reason` in the ai_summary field, e.g. `ai_summary: "Rejected: file type not supported"` or `ai_summary: "Rejected: file size exceeds 10MB"`.
+- and ai_tags: ["ai:error"]
 
+# Update the Prompt
+- add a new prompt for files to the LLM that includes the file name, file type, tags and human summary,and file size in bytes, along with the file content (or extracted text for supported types). The prompt should instruct the LLM to generate relevant tags and a concise summary of the file's content.
+
+# Processing
+- get the list of files from the queue endpoint
+- filter for valid file types and sizes (reject unsupported types and files > 10MB)
+- for each file, download the file bytes using the signed `file_path` URL
+- run the file bytes through the LLM to generate tags and a summary
+- record all necessary metadata (source, id/file_id, ai_tags, ai_summary) for each processed file
+- update gopher stats for new source type of files (e.g. `ai_files_processed`, `ai_files_rejected`, etc.)
+- send the results back to the API using the `PATCH /api/ai/items` endpoint
 
 ## AI Enrichment API
 
@@ -299,11 +316,3 @@ while (true) {
 }
 ```
 
-# Processing
-- get the list of files from the queue endpoint
-- for each file, download the file bytes using the signed `file_path` URL
-- filter for valid file types and sizes (reject unsupported types and files > 10MB)
-- run the file bytes through your LLM to generate tags and a summary
-- record all necessary metadata (source, id/file_id, ai_tags, ai_summary) for each processed file
-- update gopher stats for new source type of files (e.g. `ai_files_processed`, `ai_files_rejected`, etc.)
-- send the results back to the API using the `PATCH /api/ai/items` endpoint
