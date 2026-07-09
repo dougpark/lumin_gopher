@@ -112,7 +112,7 @@ export function queryEventsByRange(fromMs: number, toMs: number, type?: string, 
     const params: (string | number)[] = [fromMs, toMs];
     if (type) { sql += ` AND type = ?`; params.push(type); }
     if (status) { sql += ` AND status = ?`; params.push(status); }
-    sql += ` ORDER BY timestamp ASC`;
+    sql += ` ORDER BY timestamp DESC`;
     return db.query<EventRow, typeof params>(sql).all(...params);
 }
 
