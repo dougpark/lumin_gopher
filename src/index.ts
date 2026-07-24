@@ -150,6 +150,13 @@ app.get("/", (c) => {
     });
 });
 
+// note.html
+app.get("/note", (c) => {
+    return new Response(Bun.file("public/note.html"), {
+        headers: { "Content-Type": "text/html" }
+    });
+});
+
 // Email stats dashboard
 app.get("/email", (c) => {
     return new Response(Bun.file(EMAIL_DASHBOARD_PATH), {

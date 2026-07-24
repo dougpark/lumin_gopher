@@ -185,6 +185,16 @@
 
     <script>
         // ── Chart setup ─────────────────────────────────────────────────────────
+        const RECENT_ACTIVITY_OPEN_KEY = 'gopher.recentActivityOpen';
+
+        function isRecentActivityOpen() {
+            return localStorage.getItem(RECENT_ACTIVITY_OPEN_KEY) === '1';
+        }
+
+        function setRecentActivityOpen(open) {
+            localStorage.setItem(RECENT_ACTIVITY_OPEN_KEY, open ? '1' : '0');
+        }
+
         let bucketMs = [];
         const ctx = document.getElementById('timeseries-chart').getContext('2d');
         const chart = new Chart(ctx, {
@@ -289,7 +299,11 @@
                 chart.data.labels = rows.map(r => fmtTime(r.bucket));
                 chart.data.datasets[0].data = rows.map(r => r.count);
                 chart.data.datasets[0].backgroundColor = '#4285F4'; // reset highlight
-                document.getElementById('drilldown-panel').classList.add('hidden');
+                const panel = document.getElementById('drilldown-panel');
+                const keepRecentOpen = panel.dataset.view === 'recent' && isRecentActivityOpen();
+                if (!keepRecentOpen) {
+                    panel.classList.add('hidden');
+                }
                 chart.update();
             } catch { /* silent */ }
         }
@@ -312,8 +326,10 @@
             const end = new Date(to);
             title.textContent = `Events ${start.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} – ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
             tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gemini-muted">Loading...</td></tr>`;
+            panel.dataset.view = 'drilldown';
             panel.classList.remove('hidden');
             panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            setRecentActivityOpen(false);
 
             try {
                 const res = await fetch(`/api/metrics/events?${params}`);
@@ -372,12 +388,15 @@
         }
 
         function closeDrilldown() {
-            document.getElementById('drilldown-panel').classList.add('hidden');
+            const panel = document.getElementById('drilldown-panel');
+            panel.classList.add('hidden');
+            panel.dataset.view = '';
             chart.data.datasets[0].backgroundColor = '#4285F4';
             chart.update();
+            setRecentActivityOpen(false);
         }
 
-        async function openRecentActivity() {
+        async function openRecentActivity(toggle = true, scrollIntoView = true) {
             const type = document.getElementById('filter-type').value;
             const status = document.getElementById('filter-status').value;
             const params = new URLSearchParams({ limit: '100' });
@@ -388,11 +407,20 @@
             const title = document.getElementById('drilldown-title');
             const tbody = document.getElementById('drilldown-body');
 
+            if (toggle && panel.dataset.view === 'recent' && !panel.classList.contains('hidden')) {
+                closeDrilldown();
+                return;
+            }
+
             const filterLabel = [type, status].filter(Boolean).join(' · ') || 'all types';
             title.textContent = `Last 100 Events — ${filterLabel}`;
             tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gemini-muted">Loading...</td></tr>`;
+            panel.dataset.view = 'recent';
             panel.classList.remove('hidden');
-            panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            setRecentActivityOpen(true);
+            if (scrollIntoView) {
+                panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
 
             try {
                 const res = await fetch(`/api/metrics/recent-events?${params}`);
@@ -475,12 +503,26 @@
         // ── Auto-refresh ─────────────────────────────────────────────────────────
         async function refresh() {
             await Promise.all([loadSummary(), loadTimeseries(), loadErrors()]);
+            if (isRecentActivityOpen()) {
+                await openRecentActivity(false, false);
+            }
             document.getElementById('last-refresh').textContent =
                 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         }
 
-        document.getElementById('filter-type').addEventListener('change', loadTimeseries);
-        document.getElementById('filter-status').addEventListener('change', loadTimeseries);
+        document.getElementById('filter-type').addEventListener('change', async () => {
+            await loadTimeseries();
+            if (isRecentActivityOpen()) {
+                await openRecentActivity(false, false);
+            }
+        });
+
+        document.getElementById('filter-status').addEventListener('change', async () => {
+            await loadTimeseries();
+            if (isRecentActivityOpen()) {
+                await openRecentActivity(false, false);
+            }
+        });
 
         refresh();
         setInterval(refresh, 60_000);
