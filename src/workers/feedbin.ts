@@ -14,6 +14,7 @@ import { writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { logEvent } from "../db/db";
 import { ingestBookmarks } from "./bookmarks";
+import { logDownloadCleanup } from "./downloadRetention";
 import type { JobRunOutcome } from "./jobRunner";
 
 const DATA_DIR = path.join(import.meta.dir, "..", "..", "data");
@@ -161,6 +162,7 @@ export async function fetchFeedbinStarred(): Promise<JobRunOutcome> {
 
     writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf-8");
     console.log(`[Feedbin] Wrote ${allEntries.length} starred entries → ${outPath}`);
+    if (!batchFailed) logDownloadCleanup(DATA_DIR, "feedbin", logEvent);
 
     await logEvent("feedbin", "success", {
         event: "feedbin_starred_fetched",

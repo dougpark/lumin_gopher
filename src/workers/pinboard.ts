@@ -10,6 +10,7 @@
 import { writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { logEvent } from "../db/db";
+import { logDownloadCleanup } from "./downloadRetention";
 import type { JobRunOutcome } from "./jobRunner";
 
 const DATA_DIR = path.join(import.meta.dir, "..", "..", "data");
@@ -128,6 +129,7 @@ export async function fetchPinboardPopular(): Promise<JobRunOutcome> {
 
     writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf-8");
     console.log(`[Pinboard] Wrote ${items.length} items → ${outPath}`);
+    logDownloadCleanup(DATA_DIR, "popular", logEvent);
 
     await logEvent("popular", "success", {
         event: "pinboard_popular_scraped",

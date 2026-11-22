@@ -51,6 +51,12 @@ The timer is relative to Gopher startup, and a long run can cause an interval to
 
 ---
 
+### Download retention
+
+After writing a complete Feedbin or Pinboard download, that worker removes its own dated JSON downloads older than 30 UTC calendar days from `data/`. The cutoff date itself and today's file are kept. Other files, including the SQLite database, are never removed. Cleanup results and errors are logged; a cleanup error does not stop the download or ingestion.
+
+---
+
 ### 🌐 Management Dashboard (`http://aistation.local:3030`)
 
 | Route | Description |
