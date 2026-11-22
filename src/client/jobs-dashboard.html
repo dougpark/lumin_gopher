@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lumin Gopher — Scheduled Jobs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module" src="/assets/sidebar.js"></script>
+</head>
+
+<body class="min-h-screen bg-slate-50 font-sans text-slate-900">
+    <header class="sticky top-0 z-10 border-b border-slate-200 bg-white">
+        <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">🐿️</span>
+                <div>
+                    <h1 class="text-xl font-semibold">Scheduled jobs</h1>
+                    <p class="text-xs text-slate-500">Latest run status for background work</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 text-sm text-slate-500">
+                <span id="refresh-status">Connecting…</span>
+                <a class="rounded-full border border-slate-200 px-3 py-1.5 hover:border-blue-400 hover:text-blue-600"
+                    href="/">Activity details</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="mx-auto max-w-6xl px-6 py-8">
+        <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div class="border-b border-slate-200 px-5 py-4">
+                <h2 class="font-semibold">Job status</h2>
+                <p class="mt-1 text-sm text-slate-500">Refreshes automatically every 15 seconds.</p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[680px] text-left text-sm">
+                    <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                        <tr>
+                            <th class="px-5 py-3 font-medium">Job</th>
+                            <th class="px-5 py-3 font-medium">Schedule</th>
+                            <th class="px-5 py-3 font-medium">Status</th>
+                            <th class="px-5 py-3 font-medium">Last run</th>
+                            <th class="px-5 py-3 text-right font-medium">Processed</th>
+                        </tr>
+                    </thead>
+                    <tbody id="job-rows" class="divide-y divide-slate-100">
+                        <tr><td class="px-5 py-8 text-center text-slate-500" colspan="5">Loading scheduled jobs…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p id="load-error" class="hidden border-t border-red-100 bg-red-50 px-5 py-3 text-sm text-red-700"></p>
+        </section>
+    </main>
+
+    <script>
+        const rows = document.getElementById('job-rows');
+        const refreshStatus = document.getElementById('refresh-status');
+        const loadError = document.getElementById('load-error');
+        const statusStyles = {
+            running: 'bg-blue-100 text-blue-700',
+            succeeded: 'bg-emerald-100 text-emerald-700',
+            failed: 'bg-red-100 text-red-700',
+            skipped: 'bg-amber-100 text-amber-700',
+            never: 'bg-slate-100 text-slate-600'
+        };
+
+        function formatDate(timestamp) {
+            if (timestamp == null) return 'Never';
+            return new Date(timestamp).toLocaleString([], {
+                month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+            });
+        }
+
+        function makeCell(text, className = 'px-5 py-4') {
+            const cell = document.createElement('td');
+            cell.className = className;
+            cell.textContent = text;
+            return cell;
+        }
+
+        function renderJob(job) {
+            const latest = job.latestRun;
+            const status = latest?.status ?? 'never';
+            const row = document.createElement('tr');
+            row.className = 'align-top';
+            row.append(makeCell(job.name, 'px-5 py-4 font-medium'));
+            row.append(makeCell(job.schedule, 'px-5 py-4 text-slate-600'));
+
+            const statusCell = document.createElement('td');
+            statusCell.className = 'px-5 py-4';
+            const badge = document.createElement('span');
+            badge.className = `inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusStyles[status] ?? statusStyles.never}`;
+            badge.textContent = status === 'never' ? 'Never run' : status;
+            statusCell.appendChild(badge);
+            row.append(statusCell);
+
+            const timeCell = document.createElement('td');
+            timeCell.className = 'px-5 py-4 text-slate-600';
+            const time = document.createElement('div');
+            time.textContent = formatDate(latest?.startedAt);
+            timeCell.appendChild(time);
+            if (latest?.durationMs != null) {
+                const duration = document.createElement('div');
+                duration.className = 'mt-1 text-xs text-slate-400';
+                duration.textContent = `${(latest.durationMs / 1000).toFixed(1)}s`;
+                timeCell.appendChild(duration);
+            }
+            if (latest?.error) {
+                const error = document.createElement('div');
+                error.className = 'mt-1 max-w-xs break-words text-xs text-red-600';
+                error.textContent = latest.error;
+                timeCell.appendChild(error);
+            }
+            row.append(timeCell);
+
+            const count = latest?.processedCount;
+            row.append(makeCell(
+                count == null ? '—' : `${count.toLocaleString()} ${job.itemLabel}`,
+                'px-5 py-4 text-right text-slate-600'
+            ));
+            return row;
+        }
+
+        async function refreshJobs() {
+            try {
+                const response = await fetch('/api/jobs', { cache: 'no-store' });
+                if (!response.ok) throw new Error(`Request failed (${response.status})`);
+                const jobs = await response.json();
+                rows.replaceChildren(...jobs.map(renderJob));
+                loadError.classList.add('hidden');
+                refreshStatus.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`;
+            } catch (error) {
+                loadError.textContent = `Could not load job status: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                loadError.classList.remove('hidden');
+                refreshStatus.textContent = 'Refresh failed';
+            }
+        }
+
+        refreshJobs();
+        setInterval(refreshJobs, 15000);
+    </script>
+</body>
+
+</html>

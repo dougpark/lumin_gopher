@@ -92,6 +92,7 @@ type QueueSourceParam = "all" | "rss" | "bookmarks" | "file";
 export interface EnrichmentSummary {
     bookmarks: number;
     newsItems: number;
+    processed: number;
     failed: boolean;
 }
 
@@ -429,7 +430,7 @@ async function fetchQueueWithFallback(
 
 // ── Main export ──────────────────────────────────────────────────────────────
 
-export async function enrichQueue(summary: EnrichmentSummary = { bookmarks: 0, newsItems: 0, failed: false }): Promise<EnrichmentSummary> {
+export async function enrichQueue(summary: EnrichmentSummary = { bookmarks: 0, newsItems: 0, processed: 0, failed: false }): Promise<EnrichmentSummary> {
     const authHeaders = { "Authorization": `Bearer ${LUMIN_API_TOKEN}` };
 
     if (!ENABLE_BOOKMARK_QUEUE) {
@@ -491,10 +492,12 @@ export async function enrichQueue(summary: EnrichmentSummary = { bookmarks: 0, n
                     });
                     results.push({ source: item.source, id: item.id, ai_tags: ["ai:stale"] });
                     staleCount++;
+                    summary.processed++;
                     continue;
                 }
             }
             const { result, succeeded } = await processItemWithOllama(item);
+            summary.processed++;
             if (!succeeded) {
                 summary.failed = true;
             } else if (item.source === "bookmark") {

@@ -6,6 +6,7 @@
 
 import si from "systeminformation";
 import { logEvent } from "../db/db";
+import type { JobRunOutcome } from "./jobRunner";
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST ?? "http://host.docker.internal:11434";
 const HA_URL = process.env.HA_URL ?? "";
@@ -142,7 +143,7 @@ export async function collectSnapshot(): Promise<SystemSnapshot> {
     return { collectedAt: Date.now(), cpu, ram, disks, gpu, ollama, station_watts };
 }
 
-export async function logSystemMetrics(): Promise<void> {
+export async function logSystemMetrics(): Promise<JobRunOutcome> {
     try {
         const snapshot = await collectSnapshot();
         lastSnapshot = snapshot;
@@ -155,7 +156,13 @@ export async function logSystemMetrics(): Promise<void> {
             ollama_models: ollama.map(m => m.name),
             station_watts: snapshot.station_watts
         });
+        return { processedCount: 1 };
     } catch (err) {
         logEvent("system_metrics", "error", { error: String(err) });
+        return {
+            processedCount: 0,
+            status: "failed",
+            error: err instanceof Error ? err.message : String(err),
+        };
     }
 }

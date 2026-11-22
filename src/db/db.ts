@@ -46,6 +46,19 @@ db.run(`CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_events_type      ON events (type)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_events_status    ON events (status)`);
 
+db.run(`
+    CREATE TABLE IF NOT EXISTS job_runs (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id          TEXT    NOT NULL,
+        started_at      INTEGER NOT NULL,
+        finished_at     INTEGER,
+        status          TEXT    NOT NULL,
+        processed_count INTEGER,
+        error           TEXT
+    )
+`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_job_runs_job_id_id ON job_runs (job_id, id DESC)`);
+
 const insertStmt = db.prepare(
     `INSERT INTO events (timestamp, type, status, details) VALUES (?, ?, ?, ?)`
 );
@@ -65,6 +78,65 @@ export function logEvent(
         }
         throw err;
     }
+}
+
+export type JobRunStatus = "running" | "succeeded" | "failed" | "skipped";
+
+export interface JobRunRow {
+    id: number;
+    job_id: string;
+    started_at: number;
+    finished_at: number | null;
+    status: JobRunStatus;
+    processed_count: number | null;
+    error: string | null;
+}
+
+export function startJobRun(jobId: string): number {
+    const result = db.query(
+        `INSERT INTO job_runs (job_id, started_at, status) VALUES (?, ?, 'running')`
+    ).run(jobId, Date.now());
+    const runId = Number(result.lastInsertRowid);
+
+    const retentionCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    db.query(`
+        DELETE FROM job_runs
+        WHERE finished_at IS NOT NULL
+          AND finished_at < ?
+          AND id NOT IN (SELECT MAX(id) FROM job_runs GROUP BY job_id)
+    `).run(retentionCutoff);
+
+    return runId;
+}
+
+export function finishJobRun(
+    runId: number,
+    status: Exclude<JobRunStatus, "running">,
+    processedCount: number,
+    error?: string
+): void {
+    db.query(`
+        UPDATE job_runs
+        SET finished_at = ?, status = ?, processed_count = ?, error = ?
+        WHERE id = ? AND status = 'running'
+    `).run(Date.now(), status, processedCount, error?.slice(0, 500) ?? null, runId);
+}
+
+export function markInterruptedJobRuns(): void {
+    db.query(`
+        UPDATE job_runs
+        SET finished_at = ?, status = 'failed', error = 'Service restarted before the run completed'
+        WHERE status = 'running'
+    `).run(Date.now());
+}
+
+export function queryLatestJobRuns(): JobRunRow[] {
+    return db.query<JobRunRow, []>(`
+        SELECT id, job_id, started_at, finished_at, status, processed_count, error
+        FROM job_runs
+        WHERE id IN (SELECT MAX(id) FROM job_runs GROUP BY job_id)
+        ORDER BY job_id
+    `).all();
 }
 
 // ── Query helpers used by the metrics API ────────────────────────────────────

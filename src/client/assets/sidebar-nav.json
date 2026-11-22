@@ -79,6 +79,11 @@
           "comingSoon": true
         },
         {
+          "label": "Scheduled Jobs",
+          "href": "/dashboard",
+          "icon": "queue"
+        },
+        {
           "label": "System Health",
           "href": "/system-health",
           "icon": "monitor"

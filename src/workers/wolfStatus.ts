@@ -30,7 +30,7 @@ async function sendEvent(url: string, token: string, event: StatusEvent): Promis
 export async function runWithWolfStatus(
     work: (summary: EnrichmentSummary) => Promise<unknown>
 ): Promise<EnrichmentSummary> {
-    const summary: EnrichmentSummary = { bookmarks: 0, newsItems: 0, failed: false };
+    const summary: EnrichmentSummary = { bookmarks: 0, newsItems: 0, processed: 0, failed: false };
     const baseUrl = process.env.WOLF_URL?.trim();
     const token = process.env.WOLF_STATUS_TOKEN?.trim();
     const jobId = process.env.WOLF_JOB_ID?.trim();

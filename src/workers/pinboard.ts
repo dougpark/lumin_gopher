@@ -10,6 +10,7 @@
 import { writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { logEvent } from "../db/db";
+import type { JobRunOutcome } from "./jobRunner";
 
 const DATA_DIR = path.join(import.meta.dir, "..", "..", "data");
 const POPULAR_URL = "https://pinboard.in/popular";
@@ -77,7 +78,7 @@ function parsePopularItems(html: string, scrapedAt: string): PopularItem[] {
     return items;
 }
 
-export async function fetchPinboardPopular(): Promise<void> {
+export async function fetchPinboardPopular(): Promise<JobRunOutcome> {
     const scrapedAt = new Date().toISOString();
     const outPath = todayFilePath();
 
@@ -104,7 +105,7 @@ export async function fetchPinboardPopular(): Promise<void> {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[Pinboard] Fetch failed: ${msg}`);
         await logEvent("popular", "error", { event: "pinboard_fetch_failed", error: msg });
-        return;
+        return { processedCount: 0, status: "failed", error: msg };
     }
 
     const items = parsePopularItems(html, scrapedAt);
@@ -115,7 +116,7 @@ export async function fetchPinboardPopular(): Promise<void> {
             event: "pinboard_parse_empty",
             note: "Zero items parsed; check HTML structure",
         });
-        return;
+        return { processedCount: 0, status: "failed", error: "No popular items could be parsed" };
     }
 
     const payload = {
@@ -137,9 +138,14 @@ export async function fetchPinboardPopular(): Promise<void> {
     // V2: ingest into Lumin
     if (!LUMIN_RSS_INGEST_TOKEN || !LUMIN_API_URL) {
         console.log(`[Pinboard] Skipping Lumin ingest — LUMIN_RSS_INGEST_TOKEN or LUMIN_API_URL not set.`);
-        return;
+        return { processedCount: items.length };
     }
-    await ingestToLumin(items);
+    const ingest = await ingestToLumin(items);
+    return {
+        processedCount: items.length,
+        status: ingest.failed ? "failed" : "succeeded",
+        error: ingest.failed ? "One or more Lumin ingest batches failed" : undefined,
+    };
 }
 
 // ── Lumin RSS Ingest ─────────────────────────────────────────────────────────
@@ -191,7 +197,7 @@ async function postBatch(envelope: LuminIngestEnvelope): Promise<void> {
     throw lastError;
 }
 
-async function ingestToLumin(items: PopularItem[]): Promise<void> {
+async function ingestToLumin(items: PopularItem[]): Promise<{ ingested: number; failed: boolean }> {
     console.log(`[Pinboard] Ingesting ${items.length} items to Lumin in batches of ${INGEST_BATCH_SIZE}...`);
 
     const scrapedAt = items[0]?.scraped_at ?? new Date().toISOString();
@@ -209,6 +215,7 @@ async function ingestToLumin(items: PopularItem[]): Promise<void> {
     }
 
     let totalIngested = 0;
+    let failed = false;
     for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
         const envelope: LuminIngestEnvelope = {
@@ -221,6 +228,7 @@ async function ingestToLumin(items: PopularItem[]): Promise<void> {
             totalIngested += batch.length;
             console.log(`[Pinboard] Batch ${i + 1}/${batches.length} sent (${batch.length} items).`);
         } catch (err) {
+            failed = true;
             const msg = err instanceof Error ? err.message : String(err);
             console.error(`[Pinboard] Batch ${i + 1}/${batches.length} failed after ${INGEST_MAX_RETRIES + 1} attempts — abandoning. ${msg}`);
             await logEvent("popular", "error", {
@@ -229,6 +237,7 @@ async function ingestToLumin(items: PopularItem[]): Promise<void> {
                 error: msg,
             });
         }
+
     }
 
     if (totalIngested > 0) {
@@ -239,6 +248,7 @@ async function ingestToLumin(items: PopularItem[]): Promise<void> {
             batches: batches.length,
         });
     }
+    return { ingested: totalIngested, failed };
 }
 
 // Allow direct execution: bun run src/workers/pinboard.ts

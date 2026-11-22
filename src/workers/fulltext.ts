@@ -16,6 +16,7 @@
  */
 
 import { logEvent } from "../db/db";
+import type { JobRunOutcome } from "./jobRunner";
 
 const LUMIN_API_URL = process.env.LUMIN_API_URL ?? "https://d11.me/api";
 const LUMIN_FULL_TEXT_TOKEN = process.env.LUMIN_FULL_TEXT_TOKEN ?? "";
@@ -109,20 +110,21 @@ function sleep(ms: number): Promise<void> {
 
 // ── Main export ──────────────────────────────────────────────────────────────
 
-export async function runFullTextFetch(): Promise<void> {
+export async function runFullTextFetch(): Promise<JobRunOutcome> {
     if (!LUMIN_FULL_TEXT_TOKEN) {
         console.log(`[FullText] Skipping — LUMIN_FULL_TEXT_TOKEN not set.`);
-        return;
+        return { processedCount: 0, status: "skipped", error: "Full-text API token is not configured" };
     }
     if (!JINA_API_KEY) {
         console.log(`[FullText] Skipping — JINA_API_KEY not set.`);
-        return;
+        return { processedCount: 0, status: "skipped", error: "Jina API key is not configured" };
     }
 
     const cycleStart = Date.now();
     let totalProcessed = 0;
     let totalCompleted = 0;
     let totalFailed = 0;
+    let patchFailed = false;
     let batchNum = 0;
 
     console.log(`[FullText] Starting full-text fetch cycle...`);
@@ -136,7 +138,7 @@ export async function runFullTextFetch(): Promise<void> {
             const msg = err instanceof Error ? err.message : String(err);
             console.error(`[FullText] Queue fetch failed — aborting cycle. ${msg}`);
             logEvent("full_text", "error", { event: "lumin_fulltext_queue_failed", error: msg });
-            return;
+            return { processedCount: totalProcessed, status: "failed", error: msg };
         }
 
         if (queue.count === 0) {
@@ -154,13 +156,15 @@ export async function runFullTextFetch(): Promise<void> {
             .map(r => r.value);
 
         const completed = results.filter(r => r.status === "completed").length;
-        const failed = results.filter(r => r.status === "fetch_failed").length;
+        const failed = results.filter(r => r.status === "fetch_failed").length
+            + settled.filter(r => r.status === "rejected").length;
 
         // 3. Write results back to Lumin
         if (results.length > 0) {
             try {
                 const patched = await patchResults(results);
                 console.log(`[FullText] Batch ${batchNum}: wrote ${patched.updated} results back.`);
+                if (patched.updated < results.length) patchFailed = true;
                 logEvent("full_text", "success", {
                     event: "lumin_fulltext_batch",
                     batch: batchNum,
@@ -173,11 +177,12 @@ export async function runFullTextFetch(): Promise<void> {
                 const msg = err instanceof Error ? err.message : String(err);
                 console.error(`[FullText] Batch ${batchNum} patch failed: ${msg}`);
                 logEvent("full_text", "error", { event: "lumin_fulltext_patch_failed", batch: batchNum, error: msg });
+                patchFailed = true;
                 // Don't abort — try next batch
             }
         }
 
-        totalProcessed += results.length;
+        totalProcessed += settled.length;
         totalCompleted += completed;
         totalFailed += failed;
 
@@ -201,6 +206,11 @@ export async function runFullTextFetch(): Promise<void> {
     } else {
         console.log(`[FullText] Nothing to process.`);
     }
+    return {
+        processedCount: totalProcessed,
+        status: totalFailed > 0 || patchFailed ? "failed" : "succeeded",
+        error: totalFailed > 0 || patchFailed ? "Some full-text items could not be completed" : undefined,
+    };
 }
 
 // Allow direct execution: bun run src/workers/fulltext.ts

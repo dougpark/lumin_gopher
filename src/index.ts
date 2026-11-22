@@ -10,11 +10,13 @@ import path from "node:path";
 import { enrichQueue } from "./workers/enrichment";
 import { runWithWolfStatus } from "./workers/wolfStatus";
 import { tagFileWithOllama } from "./workers/tagger";
-import { logEvent, querySummary, queryTimeseries, queryRecentErrors, queryEventsByRange, queryRecentEvents, queryQueueStatus } from "./db/db";
+import { logEvent, querySummary, queryTimeseries, queryRecentErrors, queryEventsByRange, queryRecentEvents, queryQueueStatus, queryLatestJobRuns, markInterruptedJobRuns } from "./db/db";
 import { logSystemMetrics, collectSnapshot } from "./workers/sysmetrics";
 import { fetchPinboardPopular, todayFileExists } from "./workers/pinboard";
 import { fetchFeedbinStarred } from "./workers/feedbin";
 import { runFullTextFetch } from "./workers/fulltext";
+import { runTrackedJob } from "./workers/jobRunner";
+import { SCHEDULED_JOBS } from "./jobs";
 import { getEmailStats } from "./workers/emailStats";
 import { deleteArchivedEmail, getArchivedEmailAttachment, getArchivedEmailDetail, listArchivedEmails } from "./workers/emailViewer.ts";
 
@@ -70,6 +72,7 @@ const DASHBOARD_PATH = path.join(import.meta.dir, "client", "dashboard.html");
 const EMAIL_DASHBOARD_PATH = path.join(import.meta.dir, "client", "email.html");
 const EMAIL_VIEWER_PATH = path.join(import.meta.dir, "client", "emailviewer.html");
 const SYSTEM_HEALTH_PATH = path.join(import.meta.dir, "client", "system-health.html");
+const JOBS_DASHBOARD_PATH = path.join(import.meta.dir, "client", "jobs-dashboard.html");
 const SIDEBAR_SCRIPT_PATH = path.join(import.meta.dir, "client", "assets", "sidebar.js");
 const SIDEBAR_NAV_PATH = path.join(import.meta.dir, "client", "assets", "sidebar-nav.json");
 
@@ -144,9 +147,35 @@ app.get("/api/metrics/system", async (c) => {
     return c.json(snap);
 });
 
+// Latest execution status for each configured scheduled job
+app.get("/api/jobs", (c) => {
+    const latestRuns = new Map(queryLatestJobRuns().map(run => [run.job_id, run]));
+    return c.json(SCHEDULED_JOBS.map(job => {
+        const run = latestRuns.get(job.id);
+        return {
+            ...job,
+            latestRun: run ? {
+                startedAt: run.started_at,
+                finishedAt: run.finished_at,
+                status: run.status,
+                processedCount: run.processed_count,
+                durationMs: run.finished_at === null ? null : run.finished_at - run.started_at,
+                error: run.error,
+            } : null,
+        };
+    }));
+});
+
 // Main Dashboard
 app.get("/", (c) => {
     return new Response(Bun.file(DASHBOARD_PATH), {
+        headers: { "Content-Type": "text/html" }
+    });
+});
+
+// Scheduled jobs overview
+app.get("/dashboard", (c) => {
+    return new Response(Bun.file(JOBS_DASHBOARD_PATH), {
         headers: { "Content-Type": "text/html" }
     });
 });
@@ -304,6 +333,7 @@ const server = Bun.serve({
 }); // end Bun server
 
 console.log(`🚀 Gopher Dashboard online at ${LOCAL_HOST}:${PORT}`);
+markInterruptedJobRuns();
 
 
 /**
@@ -322,7 +352,7 @@ console.log(`🚀 Gopher Dashboard online at ${LOCAL_HOST}:${PORT}`);
 // System Metrics - every 5 minutes
 const SYSMETRICS_INTERVAL = 5 * 60 * 1000;
 setInterval(() => {
-    logSystemMetrics().catch(err => console.error(`[SysMetrics] ${err}`));
+    runTrackedJob("system-metrics", logSystemMetrics).catch(err => console.error(`[SysMetrics] ${err}`));
 }, SYSMETRICS_INTERVAL);
 
 // AI Enrichment Cycle - every 30 minutes
@@ -337,7 +367,16 @@ async function runEnrichment(): Promise<void> {
     const timestamp = new Date().toLocaleTimeString();
     console.log(`[${timestamp}] 🔍 Gopher is heading out to enrich queue...`);
     try {
-        const summary = await runWithWolfStatus(enrichQueue);
+        let summary: Awaited<ReturnType<typeof runWithWolfStatus>> | undefined;
+        await runTrackedJob("enrichment", async () => {
+            summary = await runWithWolfStatus(enrichQueue);
+            return {
+                processedCount: summary.processed,
+                status: summary.failed ? "failed" : "succeeded",
+                error: summary.failed ? "One or more enrichment items failed" : undefined,
+            };
+        });
+        if (!summary) return;
         if (summary.failed) {
             console.warn(`[${new Date().toLocaleTimeString()}] Enrichment cycle completed with errors.`);
         } else {
@@ -354,7 +393,7 @@ setInterval(() => {
 
 // Run enrichment immediately on startup to drain any backlog
 runEnrichment().catch(err => console.error(`[Enrichment] Startup run failed: ${err}`));
-logSystemMetrics().catch(err => console.error(`[SysMetrics] Startup run failed: ${err}`));
+runTrackedJob("system-metrics", logSystemMetrics).catch(err => console.error(`[SysMetrics] Startup run failed: ${err}`));
 logEvent("system", "info", { event: "startup", model: process.env.OLLAMA_MODEL ?? "gemma4:e4b" });
 
 
@@ -369,7 +408,7 @@ async function runPinboardScrape(): Promise<void> {
     }
     pinboardRunning = true;
     try {
-        await fetchPinboardPopular();
+        await runTrackedJob("pinboard-popular", fetchPinboardPopular);
     } finally {
         pinboardRunning = false;
     }
@@ -397,7 +436,7 @@ async function runFeedbinFetch(): Promise<void> {
     }
     feedbinRunning = true;
     try {
-        await fetchFeedbinStarred();
+        await runTrackedJob("feedbin-starred", fetchFeedbinStarred);
     } finally {
         feedbinRunning = false;
     }
@@ -421,7 +460,7 @@ async function runFullTextCycle(): Promise<void> {
     }
     fulltextRunning = true;
     try {
-        await runFullTextFetch();
+        await runTrackedJob("full-text", runFullTextFetch);
     } finally {
         fulltextRunning = false;
     }

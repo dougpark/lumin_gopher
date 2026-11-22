@@ -46,7 +46,7 @@ test("counts successful news and bookmark inference across batches, excluding st
         throw new Error(`Unexpected request: ${url}`);
     });
 
-    expect(await enrichQueue()).toEqual({ bookmarks: 1, newsItems: 1, failed: true });
+    expect(await enrichQueue()).toEqual({ bookmarks: 1, newsItems: 1, processed: 21, failed: true });
     expect(inference).toBe(3);
     expect(batches).toHaveLength(0);
 });
@@ -59,12 +59,12 @@ test("retains inference counts when write-back fails", async () => {
         if (url.includes("/ai/items")) return new Response("failure", { status: 500 });
         throw new Error(`Unexpected request: ${url}`);
     });
-    expect(await enrichQueue()).toEqual({ bookmarks: 1, newsItems: 0, failed: true });
+    expect(await enrichQueue()).toEqual({ bookmarks: 1, newsItems: 0, processed: 1, failed: true });
 });
 
 test("an empty queue is a successful run", async () => {
     setFetch(async () => Response.json(queue([])));
-    expect(await enrichQueue()).toEqual({ bookmarks: 0, newsItems: 0, failed: false });
+    expect(await enrichQueue()).toEqual({ bookmarks: 0, newsItems: 0, processed: 0, failed: false });
 });
 
 test("a partial queue fallback is reported as failed", async () => {
@@ -73,7 +73,7 @@ test("a partial queue fallback is reported as failed", async () => {
         if (source === "all" || source === "rss") return new Response("unavailable", { status: 503 });
         return Response.json(queue([]));
     });
-    expect(await enrichQueue()).toEqual({ bookmarks: 0, newsItems: 0, failed: true });
+    expect(await enrichQueue()).toEqual({ bookmarks: 0, newsItems: 0, processed: 0, failed: true });
 });
 
 test("an inference error sentinel is not counted as a successful result", async () => {
@@ -89,7 +89,7 @@ test("an inference error sentinel is not counted as a successful result", async 
         throw new Error(`Unexpected request: ${url}`);
     });
     for (let attempt = 0; attempt < 3; attempt++) {
-        expect(await enrichQueue()).toEqual({ bookmarks: 0, newsItems: 0, failed: true });
+        expect(await enrichQueue()).toEqual({ bookmarks: 0, newsItems: 0, processed: 1, failed: true });
     }
     expect(patched).toEqual([{ source: "bookmark", id: 200, ai_tags: ["ai:error"] }]);
 });

@@ -14,6 +14,7 @@ import { writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { logEvent } from "../db/db";
 import { ingestBookmarks } from "./bookmarks";
+import type { JobRunOutcome } from "./jobRunner";
 
 const DATA_DIR = path.join(import.meta.dir, "..", "..", "data");
 const FEEDBIN_API = "https://api.feedbin.com/v2";
@@ -84,10 +85,10 @@ async function getEntries(ids: number[]): Promise<FeedbinEntry[]> {
 
 // ── Main export ──────────────────────────────────────────────────────────────
 
-export async function fetchFeedbinStarred(): Promise<void> {
+export async function fetchFeedbinStarred(): Promise<JobRunOutcome> {
     if (!FEEDBIN_USER || !FEEDBIN_PASSWORD) {
         console.log(`[Feedbin] Skipping — FEEDBIN_USER or FEEDBIN_PASSWORD not set.`);
-        return;
+        return { processedCount: 0, status: "skipped", error: "Feedbin credentials are not configured" };
     }
 
     const fetchedAt = new Date().toISOString();
@@ -102,7 +103,7 @@ export async function fetchFeedbinStarred(): Promise<void> {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[Feedbin] Failed to fetch starred IDs: ${msg}`);
         await logEvent("feedbin", "error", { event: "feedbin_starred_ids_failed", error: msg });
-        return;
+        return { processedCount: 0, status: "failed", error: msg };
     }
 
     console.log(`[Feedbin] ${starredIds.length} starred entries found. Fetching details...`);
@@ -114,12 +115,14 @@ export async function fetchFeedbinStarred(): Promise<void> {
     }
 
     const allEntries: FeedbinEntry[] = [];
+    let batchFailed = false;
     for (let i = 0; i < batches.length; i++) {
         try {
             const entries = await getEntries(batches[i]);
             allEntries.push(...entries);
             console.log(`[Feedbin] Batch ${i + 1}/${batches.length}: fetched ${entries.length} entries.`);
         } catch (err) {
+            batchFailed = true;
             const msg = err instanceof Error ? err.message : String(err);
             console.error(`[Feedbin] Batch ${i + 1}/${batches.length} failed: ${msg}`);
             await logEvent("feedbin", "info", { event: "feedbin_entries_batch_failed", batch: i + 1, error: msg });
@@ -129,8 +132,12 @@ export async function fetchFeedbinStarred(): Promise<void> {
 
     if (allEntries.length === 0) {
         console.warn(`[Feedbin] No entries retrieved.`);
-        await logEvent("feedbin", "error", { event: "feedbin_no_entries", starred_count: starredIds.length });
-        return;
+        if (starredIds.length > 0) {
+            await logEvent("feedbin", "error", { event: "feedbin_no_entries", starred_count: starredIds.length });
+            return { processedCount: 0, status: "failed", error: "Starred entries were found but none could be retrieved" };
+        }
+        await logEvent("feedbin", "success", { event: "feedbin_starred_fetched", count: 0 });
+        return { processedCount: 0 };
     }
 
     // Sort newest first by published date
@@ -172,6 +179,11 @@ export async function fetchFeedbinStarred(): Promise<void> {
         })),
         "feedbin"
     );
+    return {
+        processedCount: allEntries.length,
+        status: batchFailed ? "failed" : "succeeded",
+        error: batchFailed ? "One or more Feedbin entry batches failed" : undefined,
+    };
 }
 
 // Allow direct execution: bun run src/workers/feedbin.ts
