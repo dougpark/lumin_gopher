@@ -41,6 +41,14 @@ Polls the Lumin remote API every **30 minutes** to fetch unprocessed RSS items a
 
 **Failure handling:** A per-item fail counter tracks consecutive Ollama errors across cycles. After **3 failures** on the same item, it is patched with `ai_tags: ["ai:error"]`, permanently removing it from the queue so it never clogs future batches.
 
+#### Wolfdrive status
+
+Set `WOLF_URL` to the Wolfdrive server base URL, `WOLF_JOB_ID` to the registered status job ID, and `WOLF_STATUS_TOKEN` to that job's reporting token in the protected `.env` file. The URL must be reachable from the Gopher container (host `localhost` refers to the container). Add the `dashboard` tag to the job to include it on Wolfdrive's kiosk dashboard.
+
+Each enrichment run reports its start and completion, including counts of successfully enriched bookmarks and RSS news items. Counts exclude stale RSS items, failed inference, and files; they count Ollama results even if the later Lumin API update fails. Queue, item, and write-back errors mark the run as failed. Wolfdrive reporting errors are logged and do not stop enrichment; reports are not queued for retry. The counts appear in Homelab Status run details, while the kiosk dashboard shows job-level status only.
+
+The timer is relative to Gopher startup, and a long run can cause an interval to be skipped. Use Wolfdrive's manual monitoring mode unless its fixed schedule is coordinated with this behavior.
+
 ---
 
 ### 🌐 Management Dashboard (`http://aistation.local:3030`)

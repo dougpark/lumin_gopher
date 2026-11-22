@@ -89,6 +89,12 @@ interface QueueResponse {
 
 type QueueSourceParam = "all" | "rss" | "bookmarks" | "file";
 
+export interface EnrichmentSummary {
+    bookmarks: number;
+    newsItems: number;
+    failed: boolean;
+}
+
 // ── Core processor ───────────────────────────────────────────────────────────
 
 function getFailKey(item: QueueItem): string {
@@ -128,7 +134,7 @@ function buildFilePrompt(item: FileQueueItem, contentSnippet: string): string {
     );
 }
 
-async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult | null> {
+async function processItemWithOllama(item: QueueItem): Promise<{ result: EnrichmentResult | null; succeeded: boolean }> {
     const failKey = getFailKey(item);
     const eventType = getEventType(item);
     const contextDetails = item.source === "file"
@@ -156,7 +162,7 @@ async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult 
             const validation = validatePhase1AiFile(item.file_name, item.file_type, item.file_size);
             if (!validation.accepted) {
                 logEvent(eventType, "sentinel", { ...contextDetails, reason: validation.reason });
-                return { source: "file", file_id: item.file_id, ai_tags: ["ai:error"], ai_summary: validation.reason };
+                return { result: { source: "file", file_id: item.file_id, ai_tags: ["ai:error"], ai_summary: validation.reason }, succeeded: false };
             }
 
             const fileResponse = await fetch(item.file_path);
@@ -224,10 +230,10 @@ async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult 
         });
 
         if (item.source === "file") {
-            return { source: "file", file_id: item.file_id, ai_tags, ai_summary };
+            return { result: { source: "file", file_id: item.file_id, ai_tags, ai_summary }, succeeded: true };
         }
 
-        return { source: item.source, id: item.id, ai_tags, ai_summary };
+        return { result: { source: item.source, id: item.id, ai_tags, ai_summary }, succeeded: true };
 
     } catch (err) {
         const fails = (failCounts.get(failKey) ?? 0) + 1;
@@ -240,13 +246,13 @@ async function processItemWithOllama(item: QueueItem): Promise<EnrichmentResult 
             console.warn(`[Enrichment] ${itemLabel} hit fail threshold — marking as ai:error`);
             logEvent(eventType, "sentinel", contextDetails);
             if (item.source === "file") {
-                return { source: "file", file_id: item.file_id, ai_tags: ["ai:error"] };
+                return { result: { source: "file", file_id: item.file_id, ai_tags: ["ai:error"] }, succeeded: false };
             }
-            return { source: item.source, id: item.id, ai_tags: ["ai:error"] };
+            return { result: { source: item.source, id: item.id, ai_tags: ["ai:error"] }, succeeded: false };
         }
 
         logEvent(eventType, "error", { ...contextDetails, error: String(err) });
-        return null;
+        return { result: null, succeeded: false };
     }
 }
 
@@ -349,7 +355,8 @@ async function fetchQueueSource(
 
 async function fetchQueueWithFallback(
     limit: number,
-    authHeaders: Record<string, string>
+    authHeaders: Record<string, string>,
+    summary: EnrichmentSummary
 ): Promise<QueueResponse | null> {
     const primary = await fetchQueueSource("all", limit, authHeaders);
     if (primary.ok) {
@@ -391,6 +398,7 @@ async function fetchQueueWithFallback(
 
         const partial = await fetchQueueSource(source, remaining, authHeaders);
         if (!partial.ok) {
+            summary.failed = true;
             console.warn(`[Enrichment] Queue fetch source=${source} failed: HTTP ${partial.status} — ${partial.body.slice(0, 200)}`);
             logEvent("api_error", "error", {
                 endpoint: "GET /ai/queue",
@@ -421,7 +429,7 @@ async function fetchQueueWithFallback(
 
 // ── Main export ──────────────────────────────────────────────────────────────
 
-export async function enrichQueue(): Promise<void> {
+export async function enrichQueue(summary: EnrichmentSummary = { bookmarks: 0, newsItems: 0, failed: false }): Promise<EnrichmentSummary> {
     const authHeaders = { "Authorization": `Bearer ${LUMIN_API_TOKEN}` };
 
     if (!ENABLE_BOOKMARK_QUEUE) {
@@ -431,13 +439,17 @@ export async function enrichQueue(): Promise<void> {
     while (true) {
         let data: QueueResponse | null = null;
         try {
-            data = await fetchQueueWithFallback(20, authHeaders);
+            data = await fetchQueueWithFallback(20, authHeaders, summary);
         } catch (err) {
             console.error(`[Enrichment] Queue fetch error: ${err}`);
             logEvent("api_error", "error", { endpoint: "GET /ai/queue", error: String(err) });
-            return;
+            summary.failed = true;
+            return summary;
         }
-        if (!data) return;
+        if (!data) {
+            summary.failed = true;
+            return summary;
+        }
 
         if (data.count === 0) {
             console.log(`[Enrichment] Queue empty — nothing to process.`);
@@ -447,7 +459,7 @@ export async function enrichQueue(): Promise<void> {
                 total_pending: 0,
                 source_breakdown: data.source_breakdown ?? null
             });
-            return;
+            return summary;
         }
 
         console.log(`[Enrichment] Processing ${data.count} item(s) — RSS: ${data.source_breakdown?.rss ?? 0}, Bookmarks: ${data.source_breakdown?.bookmarks ?? 0}, Files: ${data.source_breakdown?.file ?? 0} total pending.`);
@@ -482,7 +494,14 @@ export async function enrichQueue(): Promise<void> {
                     continue;
                 }
             }
-            const result = await processItemWithOllama(item);
+            const { result, succeeded } = await processItemWithOllama(item);
+            if (!succeeded) {
+                summary.failed = true;
+            } else if (item.source === "bookmark") {
+                summary.bookmarks++;
+            } else if (item.source === "rss") {
+                summary.newsItems++;
+            }
             if (result !== null) {
                 results.push(result);
             }
@@ -495,10 +514,11 @@ export async function enrichQueue(): Promise<void> {
         if (results.length > 0) {
             const patchResult = await patchResults(results);
             patchUpdated = patchResult.updated;
+            if (!patchResult.ok || patchUpdated < results.length) summary.failed = true;
 
             // Stop this cycle on failed patch to avoid reprocessing the same queue slice in a tight loop.
             if (!patchResult.ok) {
-                return;
+                return summary;
             }
 
             // Guardrail: if the API accepted the request but updated nothing, avoid hammering the same batch.
@@ -510,7 +530,7 @@ export async function enrichQueue(): Promise<void> {
                     updated: 0,
                     reason: "no_progress"
                 });
-                return;
+                return summary;
             }
         }
 
@@ -527,6 +547,7 @@ export async function enrichQueue(): Promise<void> {
         // If we got a full batch there may be more — drain immediately
         if (data.count < 20) break;
     }
+    return summary;
 }
 
 // Backward-compat alias — remove once all callers are updated

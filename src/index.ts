@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { watch } from "node:fs"; // Bun supports the standard FS watch API
 import path from "node:path";
 import { enrichQueue } from "./workers/enrichment";
+import { runWithWolfStatus } from "./workers/wolfStatus";
 import { tagFileWithOllama } from "./workers/tagger";
 import { logEvent, querySummary, queryTimeseries, queryRecentErrors, queryEventsByRange, queryRecentEvents, queryQueueStatus } from "./db/db";
 import { logSystemMetrics, collectSnapshot } from "./workers/sysmetrics";
@@ -336,8 +337,12 @@ async function runEnrichment(): Promise<void> {
     const timestamp = new Date().toLocaleTimeString();
     console.log(`[${timestamp}] 🔍 Gopher is heading out to enrich queue...`);
     try {
-        await enrichQueue();
-        console.log(`[${new Date().toLocaleTimeString()}] ✅ Enrichment cycle complete.`);
+        const summary = await runWithWolfStatus(enrichQueue);
+        if (summary.failed) {
+            console.warn(`[${new Date().toLocaleTimeString()}] Enrichment cycle completed with errors.`);
+        } else {
+            console.log(`[${new Date().toLocaleTimeString()}] ✅ Enrichment cycle complete.`);
+        }
     } finally {
         enrichRunning = false;
     }
